@@ -11,7 +11,7 @@ import time
 import httpx
 from typing import Optional
 from collections import defaultdict
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -121,6 +121,48 @@ def build_providers() -> dict:
     }
 
 PROVIDERS = build_providers()
+
+# ============================================================
+# GATEWAY AUTH (opsional tapi direkomendasikan)
+# Set GATEWAY_KEYS di env, comma-separated, cth:
+#   GATEWAY_KEYS=sk-abc123,sk-def456
+# Kalau kosong → gateway OPEN (siapa aja bisa pakai key provider lo).
+# Client wajib kirim header: Authorization: Bearer <gateway_key>
+# ============================================================
+
+def load_gateway_keys() -> list[str]:
+    raw = os.getenv("GATEWAY_KEYS", "").strip()
+    keys = [k.strip() for k in raw.split(",") if k.strip()]
+    # Fallback: dukung juga GATEWAY_KEY_1..50 (konsisten sama pola provider)
+    single = os.getenv("GATEWAY_KEY", "").strip()
+    if single:
+        keys.append(single)
+    for i in range(1, 51):
+        k = os.getenv(f"GATEWAY_KEY_{i}", "").strip()
+        if k:
+            keys.append(k)
+    # dedup, pertahankan urutan
+    seen, out = set(), []
+    for k in keys:
+        if k not in seen:
+            seen.add(k)
+            out.append(k)
+    return out
+
+GATEWAY_KEYS = load_gateway_keys()
+
+def verify_gateway_key(authorization: Optional[str] = Header(None)):
+    # Gateway terbuka kalau belum ada GATEWAY_KEYS di-set
+    if not GATEWAY_KEYS:
+        return
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            401,
+            detail={"error": "Missing bearer token", "hint": "Kirim header: Authorization: Bearer <gateway_key>"},
+        )
+    token = authorization.split(" ", 1)[1].strip()
+    if token not in GATEWAY_KEYS:
+        raise HTTPException(401, detail={"error": "Invalid gateway key"})
 
 # ============================================================
 # MODEL ALIASES
@@ -252,7 +294,7 @@ def resolve_model(model_str: str) -> tuple[str, str, str]:
 # ============================================================
 
 @app.post("/v1/chat/completions")
-async def chat_completions(request: ChatRequest):
+async def chat_completions(request: ChatRequest, _auth: None = Depends(verify_gateway_key)):
     provider_name, api_model, base_url = resolve_model(request.model)
     provider = PROVIDERS[provider_name]
     rpm_limit = provider["rpm_limit"]
