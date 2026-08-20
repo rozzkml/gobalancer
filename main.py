@@ -473,3 +473,17 @@ async def root():
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# ============================================================
+# DEBUG: catch-all — echo path yang diterima app (diagnosa Vercel rewrite)
+# ============================================================
+from fastapi import Request
+
+@app.api_route("/{full_path:path}", methods=["GET", "POST"])
+async def _debug_catch_all(request: Request, full_path: str):
+    return JSONResponse({
+        "_debug": "catch_all",
+        "received_path": request.url.path,
+        "full_path_param": full_path,
+        "method": request.method,
+    })
