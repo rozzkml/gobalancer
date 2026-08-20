@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NexusLLM — AI Gateway</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #080C14;
+    --surface:   #0D1422;
+    --border:    #1A2540;
+    --border2:   #243050;
+    --accent:    #3B82F6;
+    --accent2:   #6366F1;
+    --green:     #10B981;
+    --yellow:    #F59E0B;
+    --red:       #EF4444;
+    --text:      #E2E8F0;
+    --muted:     #64748B;
+    --muted2:    #94A3B8;
+    --code-bg:   #0A1020;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(8,12,20,0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 24px;
+    height: 56px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .nav-brand {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 700; font-size: 16px; letter-spacing: -0.3px;
+  }
+  .nav-brand .logo {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .nav-links { display: flex; gap: 4px; }
+  .nav-links a {
+    color: var(--muted2); text-decoration: none;
+    padding: 6px 12px; border-radius: 6px;
+    font-size: 13px; font-weight: 500;
+    transition: all .15s;
+  }
+  .nav-links a:hover { color: var(--text); background: var(--border); }
+  .nav-links a.active { color: var(--text); background: var(--border); }
+  .badge-live {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--green); font-weight: 500;
+  }
+  .dot-live {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; } 50% { opacity: .4; }
+  }
+
+  /* ── LAYOUT ── */
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+  /* ── HERO ── */
+  .hero {
+    padding: 72px 0 56px;
+    text-align: center;
+    position: relative;
+  }
+  .hero::before {
+    content: '';
+    position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: 600px; height: 300px;
+    background: radial-gradient(ellipse at center, rgba(59,130,246,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero-eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(59,130,246,0.1);
+    border: 1px solid rgba(59,130,246,0.2);
+    color: var(--accent);
+    padding: 5px 14px; border-radius: 99px;
+    font-size: 12px; font-weight: 600; letter-spacing: .5px;
+    text-transform: uppercase; margin-bottom: 24px;
+  }
+  .hero h1 {
+    font-size: clamp(32px, 5vw, 52px);
+    font-weight: 700;
+    letter-spacing: -1.5px;
+    line-height: 1.1;
+    margin-bottom: 20px;
+  }
+  .hero h1 span {
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .hero-sub {
+    color: var(--muted2); font-size: 16px; max-width: 520px;
+    margin: 0 auto 40px; line-height: 1.7;
+  }
+  .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 22px; border-radius: 8px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    border: none; transition: all .15s; text-decoration: none;
+  }
+  .btn-primary {
+    background: var(--accent); color: #fff;
+  }
+  .btn-primary:hover { background: #2563EB; transform: translateY(-1px); }
+  .btn-ghost {
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border2);
+  }
+  .btn-ghost:hover { background: var(--border); }
+
+  /* ── STATS BAR ── */
+  .stats-bar {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: 1px; background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+    margin-bottom: 48px;
+  }
+  .stat-cell {
+    background: var(--surface);
+    padding: 20px 24px;
+    text-align: center;
+  }
+  .stat-num {
+    font-size: 28px; font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: -1px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .stat-label { color: var(--muted); font-size: 12px; margin-top: 4px; }
+
+  /* ── SECTION ── */
+  .section { margin-bottom: 56px; }
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .section-title {
+    font-size: 16px; font-weight: 600; letter-spacing: -0.3px;
+  }
+  .section-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+  /* ── PROVIDER CARDS ── */
+  .provider-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+  }
+  .provider-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px; padding: 18px 20px;
+    transition: border-color .15s;
+  }
+  .provider-card:hover { border-color: var(--border2); }
+  .provider-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .provider-name {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 600; font-size: 14px;
+  }
+  .provider-icon {
+    width: 32px; height: 32px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .status-pill {
+    font-size: 11px; font-weight: 600; padding: 3px 9px;
+    border-radius: 99px; letter-spacing: .3px;
+  }
+  .status-ok { background: rgba(16,185,129,.1); color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+  .status-warn { background: rgba(245,158,11,.1); color: var(--yellow); border: 1px solid rgba(245,158,11,.2); }
+  .status-err { background: rgba(239,68,68,.1); color: var(--red); border: 1px solid rgba(239,68,68,.2); }
+  .provider-meta { color: var(--muted); font-size: 12px; line-height: 1.8; }
+  .provider-meta span { color: var(--muted2); }
+  .key-bar {
+    margin-top: 14px; padding-top: 14px;
+    border-top: 1px solid var(--border);
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .key-chip {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; padding: 2px 8px;
+    border-radius: 4px; border: 1px solid var(--border2);
+    color: var(--muted2);
+  }
+  .key-chip.available { border-color: rgba(16,185,129,.3); color: var(--green); }
+  .key-chip.limited { border-color: rgba(245,158,11,.3); color: var(--yellow); }
+
+  /* ── CODE BLOCK ── */
+  .code-tabs {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+  }
+  .tab-bar {
+    display: flex; gap: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 0 16px;
+    background: var(--code-bg);
+  }
+  .tab-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--muted); font-size: 12px; font-weight: 500;
+    padding: 10px 14px;
+    border-bottom: 2px solid transparent;
+    transition: all .15s;
+    font-family: 'Inter', sans-serif;
+  }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-btn:hover:not(.active) { color: var(--muted2); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+  .code-block {
+    background: var(--code-bg);
+    padding: 20px 24px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px; line-height: 1.7;
+    overflow-x: auto; position: relative;
+  }
+  .code-block .c-comment { color: #4A5568; }
+  .code-block .c-key { color: #F472B6; }
+  .code-block .c-val { color: #A5F3FC; }
+  .code-block .c-str { color: #86EFAC; }
+  .code-block .c-url { color: var(--accent); }
+  .copy-btn {
+    position: absolute; top: 12px; right: 12px;
+    background: var(--border); border: 1px solid var(--border2);
+    color: var(--muted2); padding: 5px 12px;
+    border-radius: 6px; font-size: 11px; cursor: pointer;
+    font-family: 'Inter', sans-serif; font-weight: 500;
+    transition: all .15s;
+  }
+  .copy-btn:hover { color: var(--text); background: var(--border2); }
+  .copy-btn.copied { color: var(--green); border-color: rgba(16,185,129,.3); }
+
+  /* ── MODEL TABLE ── */
+  .model-table {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+    border-collapse: collapse;
+  }
+  .model-table th {
+    background: var(--code-bg);
+    padding: 11px 16px; text-align: left;
+    font-size: 11px; font-weight: 600;
+    color: var(--muted); letter-spacing: .5px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  .model-table td {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .model-table tr:last-child td { border-bottom: none; }
+  .model-table tr:hover td { background: rgba(255,255,255,.02); }
+  .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .tag {
+    display: inline-block; padding: 2px 8px;
+    border-radius: 4px; font-size: 11px; font-weight: 600;
+  }
+  .tag-groq { background: rgba(251,146,60,.1); color: #FB923C; border: 1px solid rgba(251,146,60,.2); }
+  .tag-gemini { background: rgba(96,165,250,.1); color: #60A5FA; border: 1px solid rgba(96,165,250,.2); }
+  .tag-deepseek { background: rgba(167,139,250,.1); color: #A78BFA; border: 1px solid rgba(167,139,250,.2); }
+  .tag-ollama { background: rgba(52,211,153,.1); color: #34D399; border: 1px solid rgba(52,211,153,.2); }
+  .tag-free { background: rgba(16,185,129,.1); color: var(--green); border: 1px solid rgba(16,185,129,.2); }
+  .tag-paid { background: rgba(245,158,11,.1); color: var(--yellow); border: 1px solid rgba(245,158,11,.2); }
+
+  /* ── BASE URL BOX ── */
+  .url-box {
+    background: var(--code-bg);
+    border: 1px solid var(--border2);
+    border-radius: 8px; padding: 14px 18px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 16px;
+  }
+  .url-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px; color: var(--accent);
+    word-break: break-all;
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 28px 0; margin-top: 48px;
+    text-align: center; color: var(--muted);
+    font-size: 12px;
+  }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: var(--green); color: #fff;
+    padding: 10px 18px; border-radius: 8px;
+    font-size: 13px; font-weight: 500;
+    transform: translateY(80px); opacity: 0;
+    transition: all .25s; z-index: 999;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  @media (max-width: 640px) {
+    .stats-bar { grid-template-columns: repeat(2, 1fr); }
+    .nav-links { display: none; }
+    .hero { padding: 48px 0 36px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-brand">
+    <div class="logo">⚡</div>
+    NexusLLM
+  </div>
+  <div class="nav-links">
+    <a href="#quickstart" class="active">Quickstart</a>
+    <a href="#models">Models</a>
+    <a href="#dashboard">Dashboard</a>
+    <a href="/docs" target="_blank">API Docs</a>
+  </div>
+  <div class="badge-live">
+    <div class="dot-live"></div>
+    <span id="live-status">Checking...</span>
+  </div>
+</nav>
+
+<!-- HERO -->
+<div class="container">
+  <section class="hero">
+    <div class="hero-eyebrow">⚡ OpenAI-Compatible API Gateway</div>
+    <h1>One endpoint.<br><span>Every LLM.</span></h1>
+    <p class="hero-sub">
+      Route requests across Groq, Gemini, DeepSeek, and Ollama — 
+      with automatic key rotation and rate limit protection.
+    </p>
+    <div class="hero-actions">
+      <a href="#quickstart" class="btn btn-primary">Get Started →</a>
+      <a href="#models" class="btn btn-ghost">View Models</a>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <div class="stats-bar">
+    <div class="stat-cell">
+      <div class="stat-num" id="stat-providers">4</div>
+      <div class="stat-label">Providers</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-num" id="stat-models">13</div>
+      <div class="stat-label">Models</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-num" id="stat-requests">—</div>
+      <div class="stat-label">Total Requests</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-num" id="stat-tokens">—</div>
+      <div class="stat-label">Tokens Served</div>
+    </div>
+  </div>
+
+  <!-- PROVIDER STATUS -->
+  <section class="section" id="dashboard">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Provider Status</div>
+        <div class="section-sub">Live key pool status — auto-refreshes every 30s</div>
+      </div>
+      <button class="btn btn-ghost" onclick="loadStats()" style="font-size:12px;padding:7px 14px;">↻ Refresh</button>
+    </div>
+    <div class="provider-grid" id="provider-grid">
+      <!-- populated by JS -->
+      <div class="provider-card" style="opacity:.5">
+        <div class="provider-head">
+          <div class="provider-name"><div class="provider-icon" style="background:#1a2540">⏳</div> Loading...</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUICKSTART -->
+  <section class="section" id="quickstart">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Quickstart</div>
+        <div class="section-sub">Drop-in replacement for OpenAI — change one line</div>
+      </div>
+    </div>
+
+    <div class="url-box">
+      <span class="url-text" id="base-url">https://your-project.vercel.app/v1</span>
+      <button class="btn btn-ghost" onclick="copyUrl()" style="font-size:12px;padding:6px 14px;white-space:nowrap;">Copy URL</button>
+    </div>
+
+    <div class="code-tabs">
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="switchTab(this,'tab-curl')">cURL</button>
+        <button class="tab-btn" onclick="switchTab(this,'tab-python')">Python</button>
+        <button class="tab-btn" onclick="switchTab(this,'tab-js')">JavaScript</button>
+        <button class="tab-btn" onclick="switchTab(this,'tab-openclaw')">OpenClaw</button>
+      </div>
+
+      <div class="tab-content active" id="tab-curl">
+        <div class="code-block">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<span class="c-comment"># Kirim request ke gateway</span>
+curl <span class="c-url" id="curl-url">https://your-project.vercel.app</span>/v1/chat/completions \
+  -H <span class="c-str">"Content-Type: application/json"</span> \
+  -H <span class="c-str">"Authorization: Bearer any-key"</span> \
+  -d '{
+    <span class="c-key">"model"</span>: <span class="c-str">"deepseek"</span>,
+    <span class="c-key">"messages"</span>: [{<span class="c-key">"role"</span>: <span class="c-str">"user"</span>, <span class="c-key">"content"</span>: <span class="c-str">"Halo!"</span>}]
+  }'</div>
+      </div>
+
+      <div class="tab-content" id="tab-python">
+        <div class="code-block">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<span class="c-comment"># pip install openai</span>
+from openai import OpenAI
+
+client = OpenAI(
+    base_url=<span class="c-str" id="py-url">"https://your-project.vercel.app/v1"</span>,
+    api_key=<span class="c-str">"any-key"</span>  <span class="c-comment"># gateway yang handle</span>
+)
+
+response = client.chat.completions.create(
+    model=<span class="c-str">"deepseek"</span>,  <span class="c-comment"># atau: llama, gemini, deepseek-r1</span>
+    messages=[{<span class="c-key">"role"</span>: <span class="c-str">"user"</span>, <span class="c-key">"content"</span>: <span class="c-str">"Halo!"</span>}]
+)
+print(response.choices[0].message.content)</div>
+      </div>
+
+      <div class="tab-content" id="tab-js">
+        <div class="code-block">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<span class="c-comment">// npm install openai</span>
+import OpenAI from <span class="c-str">'openai'</span>;
+
+const client = new OpenAI({
+  baseURL: <span class="c-str" id="js-url">'https://your-project.vercel.app/v1'</span>,
+  apiKey: <span class="c-str">'any-key'</span>,
+  dangerouslyAllowBrowser: true
+});
+
+const res = await client.chat.completions.create({
+  model: <span class="c-str">'llama'</span>,
+  messages: [{ role: <span class="c-str">'user'</span>, content: <span class="c-str">'Hello!'</span> }]
+});
+console.log(res.choices[0].message.content);</div>
+      </div>
+
+      <div class="tab-content" id="tab-openclaw">
+        <div class="code-block">
+          <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+<span class="c-comment"># Setting di OpenClaw / Hermes sebagai Custom Provider</span>
+
+Provider Name : <span class="c-str">NexusLLM Gateway</span>
+Base URL      : <span class="c-url" id="oc-url">https://your-project.vercel.app/v1</span>
+API Key       : <span class="c-str">any-key</span>  <span class="c-comment">(isi bebas)</span>
+
+<span class="c-comment"># Pilih model yang mau dipakai:</span>
+Model         : <span class="c-str">deepseek</span>        <span class="c-comment">→ DeepSeek Chat (murah)</span>
+              : <span class="c-str">deepseek-r1</span>    <span class="c-comment">→ DeepSeek Reasoner</span>
+              : <span class="c-str">llama</span>          <span class="c-comment">→ Llama 3.3 70B (gratis)</span>
+              : <span class="c-str">llama-fast</span>     <span class="c-comment">→ Llama 3.1 8B (cepat)</span>
+              : <span class="c-str">gemini</span>         <span class="c-comment">→ Gemini 2.0 Flash (gratis)</span>
+              : <span class="c-str">gemini-pro</span>     <span class="c-comment">→ Gemini 1.5 Pro</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MODEL TABLE -->
+  <section class="section" id="models">
+    <div class="section-header">
+      <div>
+        <div class="section-title">Available Models</div>
+        <div class="section-sub">Use the alias — gateway handles the rest</div>
+      </div>
+    </div>
+    <table class="model-table">
+      <thead>
+        <tr>
+          <th>Alias</th>
+          <th>Provider</th>
+          <th>Model</th>
+          <th>Cost</th>
+          <th>Best For</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code class="mono">deepseek</code></td>
+          <td><span class="tag tag-deepseek">DeepSeek</span></td>
+          <td class="mono" style="color:var(--muted2)">deepseek-chat</td>
+          <td><span class="tag tag-paid">$0.14/1M</span></td>
+          <td style="color:var(--muted2)">General, coding</td>
+        </tr>
+        <tr>
+          <td><code class="mono">deepseek-r1</code></td>
+          <td><span class="tag tag-deepseek">DeepSeek</span></td>
+          <td class="mono" style="color:var(--muted2)">deepseek-reasoner</td>
+          <td><span class="tag tag-paid">$0.55/1M</span></td>
+          <td style="color:var(--muted2)">Complex reasoning</td>
+        </tr>
+        <tr>
+          <td><code class="mono">llama</code></td>
+          <td><span class="tag tag-groq">Groq</span></td>
+          <td class="mono" style="color:var(--muted2)">llama-3.3-70b</td>
+          <td><span class="tag tag-free">Free</span></td>
+          <td style="color:var(--muted2)">General, fast</td>
+        </tr>
+        <tr>
+          <td><code class="mono">llama-fast</code></td>
+          <td><span class="tag tag-groq">Groq</span></td>
+          <td class="mono" style="color:var(--muted2)">llama-3.1-8b</td>
+          <td><span class="tag tag-free">Free</span></td>
+          <td style="color:var(--muted2)">Speed, simple tasks</td>
+        </tr>
+        <tr>
+          <td><code class="mono">mixtral</code></td>
+          <td><span class="tag tag-groq">Groq</span></td>
+          <td class="mono" style="color:var(--muted2)">mixtral-8x7b</td>
+          <td><span class="tag tag-free">Free</span></td>
+          <td style="color:var(--muted2)">Multilingual</td>
+        </tr>
+        <tr>
+          <td><code class="mono">gemini</code></td>
+          <td><span class="tag tag-gemini">Gemini</span></td>
+          <td class="mono" style="color:var(--muted2)">gemini-2.0-flash</td>
+          <td><span class="tag tag-free">Free</span></td>
+          <td style="color:var(--muted2)">Multimodal, fast</td>
+        </tr>
+        <tr>
+          <td><code class="mono">gemini-pro</code></td>
+          <td><span class="tag tag-gemini">Gemini</span></td>
+          <td class="mono" style="color:var(--muted2)">gemini-1.5-pro</td>
+          <td><span class="tag tag-free">Free*</span></td>
+          <td style="color:var(--muted2)">Long context, complex</td>
+        </tr>
+        <tr>
+          <td><code class="mono">local</code></td>
+          <td><span class="tag tag-ollama">Ollama</span></td>
+          <td class="mono" style="color:var(--muted2)">llama3 (local)</td>
+          <td><span class="tag tag-free">Free</span></td>
+          <td style="color:var(--muted2)">Private, offline</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+</div>
+
+<footer>
+  <div class="container">
+    NexusLLM Gateway — OpenAI-compatible · Built with FastAPI · Deployed on Vercel
+  </div>
+</footer>
+
+<div class="toast" id="toast">Copied!</div>
+
+<script>
+  // ── UPDATE BASE URL ──
+  const BASE = window.location.origin;
+  document.getElementById('base-url').textContent = BASE + '/v1';
+  document.getElementById('curl-url').textContent = BASE;
+  document.getElementById('py-url').textContent = `"${BASE}/v1"`;
+  document.getElementById('js-url').textContent = `'${BASE}/v1'`;
+  document.getElementById('oc-url').textContent = BASE + '/v1';
+
+  // ── TABS ──
+  function switchTab(btn, id) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(id).classList.add('active');
+  }
+
+  // ── COPY ──
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2000);
+  }
+
+  function copyUrl() {
+    navigator.clipboard.writeText(BASE + '/v1');
+    showToast('Base URL copied!');
+  }
+
+  function copyCode(btn) {
+    const block = btn.parentElement;
+    const text = block.innerText.replace('Copy\n','').replace('Copied!\n','').trim();
+    navigator.clipboard.writeText(text);
+    btn.textContent = 'Copied!';
+    btn.classList.add('copied');
+    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+    showToast('Code copied!');
+  }
+
+  // ── LOAD STATS ──
+  const PROVIDER_META = {
+    groq:     { icon: '⚡', color: '#FB923C', bg: 'rgba(251,146,60,.15)', label: 'Groq Cloud' },
+    gemini:   { icon: '✦',  color: '#60A5FA', bg: 'rgba(96,165,250,.15)', label: 'Google Gemini' },
+    deepseek: { icon: '🔷', color: '#A78BFA', bg: 'rgba(167,139,250,.15)', label: 'DeepSeek' },
+    ollama:   { icon: '🦙', color: '#34D399', bg: 'rgba(52,211,153,.15)', label: 'Ollama (Local)' },
+  };
+
+  async function loadStats() {
+    try {
+      // Health check
+      const health = await fetch('/health').then(r => r.json());
+      document.getElementById('live-status').textContent = 'All Systems Go';
+
+      // Stats
+      const data = await fetch('/stats').then(r => r.json());
+
+      let totalReq = 0, totalTok = 0;
+      const grid = document.getElementById('provider-grid');
+      grid.innerHTML = '';
+
+      for (const [pname, pdata] of Object.entries(data)) {
+        const meta = PROVIDER_META[pname] || { icon: '⚙️', color: '#64748B', bg: 'rgba(100,116,139,.15)', label: pname };
+        totalReq += pdata.success + pdata.error;
+        totalTok += pdata.total_tokens;
+
+        const hasKeys = pdata.keys_loaded > 0;
+        const allAvail = pdata.keys.every(k => k.available);
+        const someAvail = pdata.keys.some(k => k.available);
+        const statusClass = !hasKeys ? 'status-warn' : allAvail ? 'status-ok' : someAvail ? 'status-warn' : 'status-err';
+        const statusText = !hasKeys ? 'No Keys' : allAvail ? 'Healthy' : someAvail ? 'Partial' : 'Limited';
+
+        const keyChips = pdata.keys.map(k =>
+          `<span class="key-chip ${k.available ? 'available' : 'limited'}">
+            ${k.key_hint} ${k.requests_last_minute}/${k.rpm_limit}rpm
+          </span>`
+        ).join('');
+
+        grid.innerHTML += `
+          <div class="provider-card">
+            <div class="provider-head">
+              <div class="provider-name">
+                <div class="provider-icon" style="background:${meta.bg};color:${meta.color}">${meta.icon}</div>
+                ${meta.label}
+              </div>
+              <span class="status-pill ${statusClass}">${statusText}</span>
+            </div>
+            <div class="provider-meta">
+              Keys loaded: <span>${pdata.keys_loaded}</span><br>
+              Requests: <span>${pdata.success} ok / ${pdata.error} err</span><br>
+              Tokens: <span>${pdata.total_tokens.toLocaleString()}</span>
+            </div>
+            ${hasKeys ? `<div class="key-bar">${keyChips}</div>` : ''}
+          </div>`;
+      }
+
+      // Update stats bar
+      document.getElementById('stat-requests').textContent = totalReq.toLocaleString();
+      document.getElementById('stat-tokens').textContent =
+        totalTok > 1000 ? (totalTok/1000).toFixed(1)+'K' : totalTok || '—';
+
+      // Count models
+      const models = await fetch('/v1/models').then(r => r.json());
+      const realModels = models.data.filter(m => !m.alias_for);
+      document.getElementById('stat-models').textContent = realModels.length;
+      document.getElementById('stat-providers').textContent = Object.keys(data).length;
+
+    } catch(e) {
+      document.getElementById('live-status').textContent = 'Offline';
+      document.getElementById('provider-grid').innerHTML =
+        '<div class="provider-card" style="opacity:.5;grid-column:1/-1;text-align:center;padding:32px">⚠️ Cannot reach gateway API</div>';
+    }
+  }
+
+  // Load on start, refresh every 30s
+  loadStats();
+  setInterval(loadStats, 30000);
+</script>
+</body>
+</html>

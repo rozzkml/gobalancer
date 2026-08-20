@@ -1,0 +1,433 @@
+"""
+LLM Gateway v2 - Load Balancer Multi Provider
+Support: Groq, Google Gemini, DeepSeek, Ollama
+- Dynamic API key detection dari environment variables
+- Compatible dengan OpenAI API format
+- Ready untuk Vercel deployment
+"""
+
+import os
+import time
+import httpx
+from typing import Optional
+from collections import defaultdict
+from fastapi import FastAPI, HTTPException, Header
+from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+app = FastAPI(title="LLM Gateway", version="2.0.0")
+
+# CORS supaya bisa dipanggil dari mana saja (OpenClaw, Hermes, dll)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ============================================================
+# AUTO-DETECT API KEYS DARI ENVIRONMENT
+# Tambah GROQ_API_KEY_1, GROQ_API_KEY_2, GROQ_API_KEY_3, dst
+# di Vercel Environment Variables — otomatis terdeteksi semua
+# ============================================================
+
+def load_keys(prefix: str) -> list[str]:
+    """
+    Auto-detect semua key dengan prefix tertentu.
+    Contoh prefix 'GROQ_API_KEY' akan detect:
+    GROQ_API_KEY_1, GROQ_API_KEY_2, GROQ_API_KEY_3, ... dst
+    Juga detect GROQ_API_KEY (tanpa angka) sebagai fallback.
+    """
+    keys = []
+
+    # Cek tanpa nomor dulu (GROQ_API_KEY)
+    single = os.getenv(prefix, "").strip()
+    if single:
+        keys.append(single)
+
+    # Cek dengan nomor 1-50
+    for i in range(1, 51):
+        key = os.getenv(f"{prefix}_{i}", "").strip()
+        if key:
+            keys.append(key)
+
+    # Hapus duplikat, pertahankan urutan
+    seen = set()
+    unique_keys = []
+    for k in keys:
+        if k not in seen:
+            seen.add(k)
+            unique_keys.append(k)
+
+    return unique_keys
+
+
+# ============================================================
+# KONFIGURASI PROVIDER
+# ============================================================
+
+def build_providers() -> dict:
+    return {
+        "groq": {
+            "base_url": "https://api.groq.com/openai/v1",
+            "api_keys": load_keys("GROQ_API_KEY"),
+            "models": {
+                "llama-3.3-70b": "llama-3.3-70b-versatile",
+                "llama-3.1-8b": "llama-3.1-8b-instant",
+                "llama-3.1-70b": "llama-3.1-70b-versatile",
+                "mixtral-8x7b": "mixtral-8x7b-32768",
+                "gemma2-9b": "gemma2-9b-it",
+            },
+            "default_model": "llama-3.3-70b-versatile",
+            "rpm_limit": 30,
+        },
+        "gemini": {
+            "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "api_keys": load_keys("GEMINI_API_KEY"),
+            "models": {
+                "gemini-2.0-flash": "gemini-2.0-flash",
+                "gemini-2.0-flash-lite": "gemini-2.0-flash-lite",
+                "gemini-1.5-flash": "gemini-1.5-flash",
+                "gemini-1.5-pro": "gemini-1.5-pro",
+            },
+            "default_model": "gemini-2.0-flash",
+            "rpm_limit": 15,
+        },
+        "deepseek": {
+            "base_url": "https://api.deepseek.com/v1",
+            "api_keys": load_keys("DEEPSEEK_API_KEY"),
+            "models": {
+                "deepseek-chat": "deepseek-chat",
+                "deepseek-reasoner": "deepseek-reasoner",
+            },
+            "default_model": "deepseek-chat",
+            "rpm_limit": 60,
+        },
+        "ollama": {
+            "base_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") + "/v1",
+            "api_keys": ["ollama"],
+            "models": {
+                "llama3": "llama3",
+                "mistral": "mistral",
+                "qwen2": "qwen2",
+                "deepseek-r1": "deepseek-r1",
+                "phi3": "phi3",
+            },
+            "default_model": "llama3",
+            "rpm_limit": 999,
+        },
+    }
+
+PROVIDERS = build_providers()
+
+# ============================================================
+# MODEL ALIASES
+# ============================================================
+
+MODEL_ALIASES = {
+    # Groq
+    "llama":          "groq/llama-3.3-70b",
+    "llama-fast":     "groq/llama-3.1-8b",
+    "llama-70b":      "groq/llama-3.1-70b",
+    "mixtral":        "groq/mixtral-8x7b",
+    "gemma":          "groq/gemma2-9b",
+    # Gemini
+    "gemini":         "gemini/gemini-2.0-flash",
+    "gemini-lite":    "gemini/gemini-2.0-flash-lite",
+    "gemini-pro":     "gemini/gemini-1.5-pro",
+    # DeepSeek
+    "deepseek":       "deepseek/deepseek-chat",
+    "deepseek-r1":    "deepseek/deepseek-reasoner",
+    # Ollama lokal
+    "local":          "ollama/llama3",
+    "local-mistral":  "ollama/mistral",
+    "local-deepseek": "ollama/deepseek-r1",
+}
+
+# ============================================================
+# RATE LIMIT TRACKER (in-memory)
+# ============================================================
+
+class RateLimitTracker:
+    def __init__(self):
+        self.requests: dict[str, list[float]] = defaultdict(list)
+
+    def _clean(self, key: str):
+        now = time.time()
+        self.requests[key] = [t for t in self.requests[key] if now - t < 60]
+
+    def can_request(self, key: str, rpm_limit: int) -> bool:
+        self._clean(key)
+        return len(self.requests[key]) < rpm_limit
+
+    def record(self, key: str):
+        self.requests[key].append(time.time())
+
+    def wait_time(self, key: str, rpm_limit: int) -> float:
+        self._clean(key)
+        window = self.requests[key]
+        if len(window) < rpm_limit:
+            return 0.0
+        return max(0.0, 60 - (time.time() - min(window)))
+
+tracker = RateLimitTracker()
+
+# ============================================================
+# KEY ROTATOR (round-robin)
+# ============================================================
+
+class KeyRotator:
+    def __init__(self):
+        self.indices: dict[str, int] = defaultdict(int)
+
+    def get_key(self, provider_name: str, rpm_limit: int) -> Optional[str]:
+        keys = PROVIDERS[provider_name]["api_keys"]
+        if not keys:
+            return None
+
+        start = self.indices[provider_name]
+        for i in range(len(keys)):
+            idx = (start + i) % len(keys)
+            key = keys[idx]
+            tracker_key = f"{provider_name}:{key}"
+            if tracker.can_request(tracker_key, rpm_limit):
+                self.indices[provider_name] = (idx + 1) % len(keys)
+                tracker.record(tracker_key)
+                return key
+        return None
+
+rotator = KeyRotator()
+
+# ============================================================
+# STATS
+# ============================================================
+
+stats: dict = defaultdict(lambda: {"success": 0, "error": 0, "total_tokens": 0})
+
+# ============================================================
+# MODELS
+# ============================================================
+
+class Message(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    model: str = "llama"
+    messages: list[Message]
+    temperature: Optional[float] = 0.7
+    max_tokens: Optional[int] = 2048
+    stream: Optional[bool] = False
+
+# ============================================================
+# HELPER: RESOLVE MODEL
+# ============================================================
+
+def resolve_model(model_str: str) -> tuple[str, str, str]:
+    # Resolve alias
+    if model_str in MODEL_ALIASES:
+        model_str = MODEL_ALIASES[model_str]
+
+    # Format "provider/model"
+    if "/" in model_str:
+        provider_name, model_alias = model_str.split("/", 1)
+        if provider_name not in PROVIDERS:
+            raise HTTPException(400, f"Provider '{provider_name}' tidak dikenal. Tersedia: {list(PROVIDERS.keys())}")
+        provider = PROVIDERS[provider_name]
+        api_model = provider["models"].get(model_alias, model_alias)
+        return provider_name, api_model, provider["base_url"]
+
+    # Cari di semua provider
+    for pname, pconfig in PROVIDERS.items():
+        if model_str in pconfig["models"]:
+            return pname, pconfig["models"][model_str], pconfig["base_url"]
+
+    # Default ke Groq
+    return "groq", model_str, PROVIDERS["groq"]["base_url"]
+
+# ============================================================
+# ENDPOINT: CHAT COMPLETIONS
+# ============================================================
+
+@app.post("/v1/chat/completions")
+async def chat_completions(request: ChatRequest):
+    provider_name, api_model, base_url = resolve_model(request.model)
+    provider = PROVIDERS[provider_name]
+    rpm_limit = provider["rpm_limit"]
+
+    api_key = rotator.get_key(provider_name, rpm_limit)
+    if not api_key:
+        keys = provider["api_keys"]
+        if not keys:
+            raise HTTPException(
+                503,
+                detail={
+                    "error": f"Tidak ada API key untuk '{provider_name}'",
+                    "hint": f"Tambahkan {provider_name.upper()}_API_KEY_1 di environment variables"
+                }
+            )
+        wait = min(
+            tracker.wait_time(f"{provider_name}:{k}", rpm_limit)
+            for k in keys
+        )
+        raise HTTPException(
+            429,
+            detail={
+                "error": "Semua key sedang rate limited",
+                "provider": provider_name,
+                "retry_after_seconds": round(wait, 1)
+            }
+        )
+
+    payload = {
+        "model": api_model,
+        "messages": [m.dict() for m in request.messages],
+        "temperature": request.temperature,
+        "max_tokens": request.max_tokens,
+        "stream": request.stream,
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        try:
+            if request.stream:
+                async def stream_gen():
+                    async with client.stream(
+                        "POST",
+                        f"{base_url}/chat/completions",
+                        json=payload,
+                        headers=headers,
+                    ) as resp:
+                        async for chunk in resp.aiter_bytes():
+                            yield chunk
+                stats[provider_name]["success"] += 1
+                return StreamingResponse(stream_gen(), media_type="text/event-stream")
+
+            resp = await client.post(
+                f"{base_url}/chat/completions",
+                json=payload,
+                headers=headers,
+            )
+
+            if resp.status_code == 429:
+                stats[provider_name]["error"] += 1
+                raise HTTPException(429, detail={"error": "Rate limited oleh provider", "provider": provider_name})
+
+            if resp.status_code != 200:
+                stats[provider_name]["error"] += 1
+                raise HTTPException(resp.status_code, detail=resp.text)
+
+            data = resp.json()
+            stats[provider_name]["success"] += 1
+
+            if "usage" in data:
+                stats[provider_name]["total_tokens"] += data["usage"].get("total_tokens", 0)
+
+            # Inject info gateway ke response
+            data["_gateway"] = {
+                "provider": provider_name,
+                "model_requested": request.model,
+                "model_used": api_model,
+            }
+            return JSONResponse(data)
+
+        except httpx.TimeoutException:
+            stats[provider_name]["error"] += 1
+            raise HTTPException(504, detail=f"Timeout dari '{provider_name}'")
+        except httpx.RequestError as e:
+            stats[provider_name]["error"] += 1
+            raise HTTPException(502, detail=f"Koneksi gagal: {str(e)}")
+
+# ============================================================
+# ENDPOINT: LIST MODELS
+# ============================================================
+
+@app.get("/v1/models")
+async def list_models():
+    models = []
+    for pname, pconfig in PROVIDERS.items():
+        key_count = len(pconfig["api_keys"])
+        for alias, api_name in pconfig["models"].items():
+            models.append({
+                "id": f"{pname}/{alias}",
+                "object": "model",
+                "provider": pname,
+                "api_model": api_name,
+                "keys_loaded": key_count,
+            })
+    for alias, target in MODEL_ALIASES.items():
+        models.append({
+            "id": alias,
+            "object": "model",
+            "alias_for": target,
+        })
+    return {"object": "list", "data": models}
+
+# ============================================================
+# ENDPOINT: STATS
+# ============================================================
+
+@app.get("/stats")
+async def get_stats():
+    result = {}
+    for pname, pconfig in PROVIDERS.items():
+        keys = pconfig["api_keys"]
+        key_status = []
+        for key in keys:
+            kid = f"{pname}:{key}"
+            reqs = len([t for t in tracker.requests.get(kid, []) if time.time() - t < 60])
+            key_status.append({
+                "key_hint": f"...{key[-6:]}",
+                "requests_last_minute": reqs,
+                "rpm_limit": pconfig["rpm_limit"],
+                "available": tracker.can_request(kid, pconfig["rpm_limit"]),
+            })
+        result[pname] = {
+            "keys_loaded": len(keys),
+            "success": stats[pname]["success"],
+            "error": stats[pname]["error"],
+            "total_tokens": stats[pname]["total_tokens"],
+            "keys": key_status,
+        }
+    return result
+
+# ============================================================
+# ENDPOINT: HEALTH & ROOT
+# ============================================================
+
+@app.get("/health")
+async def health():
+    summary = {
+        pname: f"{len(pconfig['api_keys'])} keys loaded"
+        for pname, pconfig in PROVIDERS.items()
+    }
+    return {"status": "ok", "providers": summary}
+
+@app.get("/")
+async def root():
+    static_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
+    if os.path.exists(static_path):
+        return FileResponse(static_path)
+    return {
+        "name": "LLM Gateway",
+        "version": "3.0.0",
+        "docs": "/docs",
+        "endpoints": {
+            "chat": "POST /v1/chat/completions",
+            "models": "GET /v1/models",
+            "stats": "GET /stats",
+            "health": "GET /health",
+        },
+        "aliases": MODEL_ALIASES,
+    }
+
+# Mount static files — taruh di bawah semua route
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")

@@ -1,0 +1,17 @@
+# JANGAN PERNAH PUSH INI KE GITHUB!
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Vercel
+.vercel/
+
+# OS
+.DS_Store
+Thumbs.db
