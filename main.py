@@ -486,4 +486,5 @@ async def _debug_catch_all(request: Request, full_path: str):
         "received_path": request.url.path,
         "full_path_param": full_path,
         "method": request.method,
+        "headers": {k: v for k, v in request.headers.items() if k.lower().startswith("x-")},
     })
