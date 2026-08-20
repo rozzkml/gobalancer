@@ -87,12 +87,13 @@ def build_providers() -> dict:
             "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
             "api_keys": load_keys("GEMINI_API_KEY"),
             "models": {
-                "gemini-2.0-flash": "gemini-2.0-flash",
-                "gemini-2.0-flash-lite": "gemini-2.0-flash-lite",
-                "gemini-1.5-flash": "gemini-1.5-flash",
+                "gemini-3.6-flash": "gemini-3.6-flash",
+                "gemini-2.0-flash": "gemini-3.6-flash",       # alias lama -> current
+                "gemini-2.0-flash-lite": "gemini-3.6-flash",  # alias lama -> current
+                "gemini-1.5-flash": "gemini-3.6-flash",       # alias lama -> current
                 "gemini-1.5-pro": "gemini-1.5-pro",
             },
-            "default_model": "gemini-2.0-flash",
+            "default_model": "gemini-3.6-flash",
             "rpm_limit": 15,
         },
         "deepseek": {
@@ -473,18 +474,3 @@ async def root():
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
-
-# ============================================================
-# DEBUG: catch-all — echo path yang diterima app (diagnosa Vercel rewrite)
-# ============================================================
-from fastapi import Request
-
-@app.api_route("/{full_path:path}", methods=["GET", "POST"])
-async def _debug_catch_all(request: Request, full_path: str):
-    return JSONResponse({
-        "_debug": "catch_all",
-        "received_path": request.url.path,
-        "full_path_param": full_path,
-        "method": request.method,
-        "headers": {k: v for k, v in request.headers.items() if k.lower().startswith("x-")},
-    })
