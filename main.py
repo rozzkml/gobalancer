@@ -17,6 +17,28 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from normalize import strip_thoughts, ThoughtStripper
+
+
+def _sse_content_delta(tmpl, text):
+    """Build one SSE `data:` line carrying a content delta, cloned from a
+    real upstream chunk `tmpl` so id/model/created stay consistent."""
+    import json as _json
+    if tmpl:
+        obj = {
+            "id": tmpl.get("id", ""),
+            "object": "chat.completion.chunk",
+            "created": tmpl.get("created", 0),
+            "model": tmpl.get("model", ""),
+            "choices": [{"index": 0, "finish_reason": None,
+                         "delta": {"role": "assistant", "content": text}}],
+        }
+    else:
+        obj = {"object": "chat.completion.chunk",
+               "choices": [{"index": 0, "finish_reason": None,
+                            "delta": {"role": "assistant", "content": text}}]}
+    return ("data: " + _json.dumps(obj) + "\n\n").encode()
+
 app = FastAPI(title="GoBalancer", version="2.0.0")
 
 # CORS supaya bisa dipanggil dari mana saja (OpenClaw, Hermes, dll)
@@ -417,6 +439,11 @@ async def chat_completions(request: ChatRequest, _auth: None = Depends(verify_ga
         # for the whole stream. Real incremental streaming on Vercel also
         # requires Fluid Compute enabled + the anti-buffering headers below.
         async def stream_gen():
+            import json as _json
+            stripper = ThoughtStripper()
+            reasoning_buf = []          # accumulate reasoning in case content stays empty
+            emitted_content = False     # did we forward ANY real content delta?
+            tmpl = None                 # a sample chunk dict to synthesize a fallback delta
             try:
                 async with httpx.AsyncClient(timeout=None) as sclient:
                     async with sclient.stream(
@@ -431,14 +458,61 @@ async def chat_completions(request: ChatRequest, _auth: None = Depends(verify_ga
                             yield body
                             return
                         stats[provider_name]["success"] += 1
-                        async for chunk in resp.aiter_bytes():
-                            yield chunk
+                        async for raw in resp.aiter_lines():
+                            if not raw:
+                                yield b"\n"
+                                continue
+                            if not raw.startswith("data:"):
+                                # SSE comments / keep-alives — pass through
+                                yield (raw + "\n").encode()
+                                continue
+                            data_str = raw[5:].lstrip()
+                            if data_str == "[DONE]":
+                                # Before closing: if the model never produced
+                                # visible content but streamed reasoning, promote
+                                # the reasoning so agent clients aren't left blank.
+                                tail = stripper.flush()
+                                if tail:
+                                    emitted_content = True
+                                    yield _sse_content_delta(tmpl, tail)
+                                if not emitted_content and reasoning_buf and tmpl:
+                                    yield _sse_content_delta(tmpl, "".join(reasoning_buf))
+                                yield b"data: [DONE]\n\n"
+                                continue
+                            try:
+                                obj = _json.loads(data_str)
+                            except Exception:
+                                yield (raw + "\n\n").encode()
+                                continue
+                            ch = (obj.get("choices") or [{}])
+                            if not ch:
+                                yield (raw + "\n\n").encode()
+                                continue
+                            delta = ch[0].get("delta") or {}
+                            if tmpl is None:
+                                tmpl = obj
+                            # capture reasoning (both spellings) for fallback
+                            rc = delta.get("reasoning_content") or delta.get("reasoning")
+                            if rc:
+                                reasoning_buf.append(rc)
+                            # strip <thought> blocks from visible content
+                            if delta.get("content"):
+                                clean = stripper.feed(delta["content"])
+                                if clean:
+                                    emitted_content = True
+                                    delta["content"] = clean
+                                    yield ("data: " + _json.dumps(obj) + "\n\n").encode()
+                                # if clean is empty (fully inside a thought), drop
+                                # this chunk entirely — don't forward empty noise
+                                continue
+                            # non-content chunk (role/finish/usage/tool_calls) —
+                            # forward untouched
+                            yield ("data: " + _json.dumps(obj) + "\n\n").encode()
             except Exception as e:
                 stats[provider_name]["error"] += 1
-                import json as _json
-                yield ("data: " + _json.dumps({
+                yield (b"data: " + _json.dumps({
                     "error": {"message": f"gateway stream error: {e}"}
-                }) + "\n\n").encode()
+                }).encode() + b"\n\n")
                 yield b"data: [DONE]\n\n"
         return StreamingResponse(
             stream_gen(),
@@ -473,6 +547,30 @@ async def chat_completions(request: ChatRequest, _auth: None = Depends(verify_ga
 
             data = resp.json()
             stats[provider_name]["success"] += 1
+
+            # ── Normalize output so EVERY model is agent-clean ──
+            # 1) strip <thought>/<think> blocks that leak into content
+            # 2) if content is empty but reasoning_content exists (reasoning-only
+            #    models like hy3), promote reasoning into content so agent
+            #    clients (Hermes/OpenClaw read `content`) aren't left blank.
+            # tool_calls turns are left untouched (empty content is valid there).
+            try:
+                for _c in data.get("choices", []):
+                    _m = _c.get("message")
+                    if not isinstance(_m, dict):
+                        continue
+                    if _m.get("tool_calls"):
+                        continue  # valid empty-content tool turn
+                    _txt = _m.get("content")
+                    if isinstance(_txt, str) and _txt:
+                        _m["content"] = strip_thoughts(_txt)
+                    # promote reasoning if content ended up empty
+                    if not (_m.get("content") or "").strip():
+                        _r = _m.get("reasoning_content") or _m.get("reasoning")
+                        if _r:
+                            _m["content"] = strip_thoughts(_r) if isinstance(_r, str) else _r
+            except Exception:
+                pass
 
             # Zen sometimes 200s with an empty {role} message (dead-ish model).
             # But a valid tool-call turn also has empty content (tool_calls only) —
