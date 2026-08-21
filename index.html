@@ -521,63 +521,8 @@ Model         : <span class="c-str">deepseek</span>        <span class="c-commen
           <th>Best For</th>
         </tr>
       </thead>
-      <tbody>
-        <tr>
-          <td><code class="mono">deepseek</code></td>
-          <td><span class="tag tag-deepseek">DeepSeek</span></td>
-          <td class="mono" style="color:var(--muted2)">deepseek-chat</td>
-          <td><span class="tag tag-paid">$0.14/1M</span></td>
-          <td style="color:var(--muted2)">General, coding</td>
-        </tr>
-        <tr>
-          <td><code class="mono">deepseek-r1</code></td>
-          <td><span class="tag tag-deepseek">DeepSeek</span></td>
-          <td class="mono" style="color:var(--muted2)">deepseek-reasoner</td>
-          <td><span class="tag tag-paid">$0.55/1M</span></td>
-          <td style="color:var(--muted2)">Complex reasoning</td>
-        </tr>
-        <tr>
-          <td><code class="mono">llama</code></td>
-          <td><span class="tag tag-groq">Groq</span></td>
-          <td class="mono" style="color:var(--muted2)">llama-3.3-70b</td>
-          <td><span class="tag tag-free">Free</span></td>
-          <td style="color:var(--muted2)">General, fast</td>
-        </tr>
-        <tr>
-          <td><code class="mono">llama-fast</code></td>
-          <td><span class="tag tag-groq">Groq</span></td>
-          <td class="mono" style="color:var(--muted2)">llama-3.1-8b</td>
-          <td><span class="tag tag-free">Free</span></td>
-          <td style="color:var(--muted2)">Speed, simple tasks</td>
-        </tr>
-        <tr>
-          <td><code class="mono">mixtral</code></td>
-          <td><span class="tag tag-groq">Groq</span></td>
-          <td class="mono" style="color:var(--muted2)">mixtral-8x7b</td>
-          <td><span class="tag tag-free">Free</span></td>
-          <td style="color:var(--muted2)">Multilingual</td>
-        </tr>
-        <tr>
-          <td><code class="mono">gemini</code></td>
-          <td><span class="tag tag-gemini">Gemini</span></td>
-          <td class="mono" style="color:var(--muted2)">gemini-2.0-flash</td>
-          <td><span class="tag tag-free">Free</span></td>
-          <td style="color:var(--muted2)">Multimodal, fast</td>
-        </tr>
-        <tr>
-          <td><code class="mono">gemini-pro</code></td>
-          <td><span class="tag tag-gemini">Gemini</span></td>
-          <td class="mono" style="color:var(--muted2)">gemini-1.5-pro</td>
-          <td><span class="tag tag-free">Free*</span></td>
-          <td style="color:var(--muted2)">Long context, complex</td>
-        </tr>
-        <tr>
-          <td><code class="mono">local</code></td>
-          <td><span class="tag tag-ollama">Ollama</span></td>
-          <td class="mono" style="color:var(--muted2)">llama3 (local)</td>
-          <td><span class="tag tag-free">Free</span></td>
-          <td style="color:var(--muted2)">Private, offline</td>
-        </tr>
+      <tbody id="models-tbody">
+        <tr><td colspan="5" style="color:var(--muted2)">Loading models…</td></tr>
       </tbody>
     </table>
   </section>
@@ -639,9 +584,41 @@ Model         : <span class="c-str">deepseek</span>        <span class="c-commen
     ollama:   { icon: '🦙', color: '#34D399', bg: 'rgba(52,211,153,.15)', label: 'Ollama (Local)' },
   };
 
+  function renderModelsTable(realModels, aliases) {
+    const tbody = document.getElementById('models-tbody');
+    if (!tbody) return;
+    if (!realModels.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted2)">No usable models — set a provider API key in Vercel env.</td></tr>';
+      return;
+    }
+    // Map: real model id -> shortest alias pointing to it
+    const aliasFor = {};
+    aliases.forEach(a => {
+      if (!aliasFor[a.alias_for] || a.id.length < aliasFor[a.alias_for].length) {
+        aliasFor[a.alias_for] = a.id;
+      }
+    });
+    const BEST = {
+      'gemini-3.6-flash':   'Fast, multimodal, default',
+      'gemini-2.5-flash':   'Balanced speed/quality',
+      'gemini-flash-latest':'Always-latest flash',
+      'gemini-pro-latest':  'Long context, complex',
+    };
+    tbody.innerHTML = realModels.map(m => {
+      const alias = aliasFor[m.id] || m.id;
+      const meta = PROVIDER_META[m.provider] || { label: m.provider };
+      return `<tr>
+        <td><code class="mono">${alias}</code></td>
+        <td><span class="tag tag-gemini">${meta.label}</span></td>
+        <td class="mono" style="color:var(--muted2)">${m.api_model}</td>
+        <td><span class="tag tag-free">Free</span></td>
+        <td style="color:var(--muted2)">${BEST[m.api_model] || '—'}</td>
+      </tr>`;
+    }).join('');
+  }
+
   async function loadStats() {
     try {
-      // Health check
       const health = await fetch('/health').then(r => r.json());
       document.getElementById('live-status').textContent = 'All Systems Go';
 
@@ -692,11 +669,13 @@ Model         : <span class="c-str">deepseek</span>        <span class="c-commen
       document.getElementById('stat-tokens').textContent =
         totalTok > 1000 ? (totalTok/1000).toFixed(1)+'K' : totalTok || '—';
 
-      // Count models
+      // Count models + render table (only usable models from API)
       const models = await fetch('/v1/models').then(r => r.json());
       const realModels = models.data.filter(m => !m.alias_for);
+      const aliases = models.data.filter(m => m.alias_for);
       document.getElementById('stat-models').textContent = realModels.length;
       document.getElementById('stat-providers').textContent = Object.keys(data).length;
+      renderModelsTable(realModels, aliases);
 
     } catch(e) {
       document.getElementById('live-status').textContent = 'Offline';
