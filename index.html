@@ -201,6 +201,20 @@
   .status-err { background: rgba(239,68,68,.1); color: var(--red); border: 1px solid rgba(239,68,68,.2); }
   .provider-meta { color: var(--muted); font-size: 12px; line-height: 1.8; }
   .provider-meta span { color: var(--muted2); }
+  .provider-stats {
+    margin-top: 16px; padding-top: 16px;
+    border-top: 1px solid var(--border);
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  }
+  .pstat { text-align: center; }
+  .pstat-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px; font-weight: 600; color: var(--text);
+  }
+  .pstat-lbl {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--muted); margin-top: 2px;
+  }
   .key-bar {
     margin-top: 14px; padding-top: 14px;
     border-top: 1px solid var(--border);
@@ -627,20 +641,18 @@ Model         : <span class="c-str">gemini-3.6-flash</span>     <span class="c-c
 
       for (const [pname, pdata] of Object.entries(data)) {
         const meta = PROVIDER_META[pname] || { icon: '⚙️', color: '#64748B', bg: 'rgba(100,116,139,.15)', label: pname };
-        totalReq += pdata.success + pdata.error;
+        const req = pdata.success + pdata.error;
+        totalReq += req;
         totalTok += pdata.total_tokens;
+
+        // Aggregate rpm capacity across all loaded keys
+        const rpm = pdata.keys.reduce((sum, k) => sum + k.rpm_limit, 0);
 
         const hasKeys = pdata.keys_loaded > 0;
         const allAvail = pdata.keys.every(k => k.available);
         const someAvail = pdata.keys.some(k => k.available);
         const statusClass = !hasKeys ? 'status-warn' : allAvail ? 'status-ok' : someAvail ? 'status-warn' : 'status-err';
-        const statusText = !hasKeys ? 'No Keys' : allAvail ? 'Healthy' : someAvail ? 'Partial' : 'Limited';
-
-        const keyChips = pdata.keys.map(k =>
-          `<span class="key-chip ${k.available ? 'available' : 'limited'}">
-            ${k.slot} ${k.requests_last_minute}/${k.rpm_limit}rpm
-          </span>`
-        ).join('');
+        const statusText = !hasKeys ? 'Offline' : allAvail ? 'Healthy' : someAvail ? 'Partial' : 'Limited';
 
         grid.innerHTML += `
           <div class="provider-card">
@@ -651,12 +663,11 @@ Model         : <span class="c-str">gemini-3.6-flash</span>     <span class="c-c
               </div>
               <span class="status-pill ${statusClass}">${statusText}</span>
             </div>
-            <div class="provider-meta">
-              Keys loaded: <span>${pdata.keys_loaded}</span><br>
-              Requests: <span>${pdata.success} ok / ${pdata.error} err</span><br>
-              Tokens: <span>${pdata.total_tokens.toLocaleString()}</span>
+            <div class="provider-stats">
+              <div class="pstat"><div class="pstat-num">${pdata.total_tokens.toLocaleString()}</div><div class="pstat-lbl">Tokens</div></div>
+              <div class="pstat"><div class="pstat-num">${req.toLocaleString()}</div><div class="pstat-lbl">Requests</div></div>
+              <div class="pstat"><div class="pstat-num">${rpm}</div><div class="pstat-lbl">RPM</div></div>
             </div>
-            ${hasKeys ? `<div class="key-bar">${keyChips}</div>` : ''}
           </div>`;
       }
 
