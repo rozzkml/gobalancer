@@ -441,7 +441,7 @@ curl <span class="c-url" id="curl-url">https://your-project.vercel.app</span>/v1
   -H <span class="c-str">"Content-Type: application/json"</span> \
   -H <span class="c-str">"Authorization: Bearer any-key"</span> \
   -d '{
-    <span class="c-key">"model"</span>: <span class="c-str">"deepseek"</span>,
+    <span class="c-key">"model"</span>: <span class="c-str">"gemini-3.6-flash"</span>,
     <span class="c-key">"messages"</span>: [{<span class="c-key">"role"</span>: <span class="c-str">"user"</span>, <span class="c-key">"content"</span>: <span class="c-str">"Halo!"</span>}]
   }'</div>
       </div>
@@ -458,7 +458,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model=<span class="c-str">"deepseek"</span>,  <span class="c-comment"># atau: llama, gemini, deepseek-r1</span>
+    model=<span class="c-str">"gemini-3.6-flash"</span>,  <span class="c-comment"># atau: gemini-2.5-flash, gemini-pro-latest</span>
     messages=[{<span class="c-key">"role"</span>: <span class="c-str">"user"</span>, <span class="c-key">"content"</span>: <span class="c-str">"Halo!"</span>}]
 )
 print(response.choices[0].message.content)</div>
@@ -477,7 +477,7 @@ const client = new OpenAI({
 });
 
 const res = await client.chat.completions.create({
-  model: <span class="c-str">'llama'</span>,
+  model: <span class="c-str">'gemini-3.6-flash'</span>,
   messages: [{ role: <span class="c-str">'user'</span>, content: <span class="c-str">'Hello!'</span> }]
 });
 console.log(res.choices[0].message.content);</div>
@@ -493,12 +493,10 @@ Base URL      : <span class="c-url" id="oc-url">https://your-project.vercel.app/
 API Key       : <span class="c-str">any-key</span>  <span class="c-comment">(isi bebas)</span>
 
 <span class="c-comment"># Pilih model yang mau dipakai:</span>
-Model         : <span class="c-str">deepseek</span>        <span class="c-comment">→ DeepSeek Chat (murah)</span>
-              : <span class="c-str">deepseek-r1</span>    <span class="c-comment">→ DeepSeek Reasoner</span>
-              : <span class="c-str">llama</span>          <span class="c-comment">→ Llama 3.3 70B (gratis)</span>
-              : <span class="c-str">llama-fast</span>     <span class="c-comment">→ Llama 3.1 8B (cepat)</span>
-              : <span class="c-str">gemini</span>         <span class="c-comment">→ Gemini 2.0 Flash (gratis)</span>
-              : <span class="c-str">gemini-pro</span>     <span class="c-comment">→ Gemini 1.5 Pro</span></div>
+Model         : <span class="c-str">gemini-3.6-flash</span>     <span class="c-comment">→ Fast, multimodal (default)</span>
+              : <span class="c-str">gemini-2.5-flash</span>     <span class="c-comment">→ Balanced speed/quality</span>
+              : <span class="c-str">gemini-flash-latest</span>  <span class="c-comment">→ Always-latest flash</span>
+              : <span class="c-str">gemini-pro-latest</span>    <span class="c-comment">→ Long context, complex</span></div>
       </div>
     </div>
   </section>
@@ -508,21 +506,20 @@ Model         : <span class="c-str">deepseek</span>        <span class="c-commen
     <div class="section-header">
       <div>
         <div class="section-title">Available Models</div>
-        <div class="section-sub">Use the alias — gateway handles the rest</div>
+        <div class="section-sub">Click a model name to copy — use it as the <code class="mono">model</code> field</div>
       </div>
     </div>
     <table class="model-table">
       <thead>
         <tr>
-          <th>Alias</th>
-          <th>Provider</th>
           <th>Model</th>
+          <th>Provider</th>
           <th>Cost</th>
           <th>Best For</th>
         </tr>
       </thead>
       <tbody id="models-tbody">
-        <tr><td colspan="5" style="color:var(--muted2)">Loading models…</td></tr>
+        <tr><td colspan="4" style="color:var(--muted2)">Loading models…</td></tr>
       </tbody>
     </table>
   </section>
@@ -584,33 +581,32 @@ Model         : <span class="c-str">deepseek</span>        <span class="c-commen
     ollama:   { icon: '🦙', color: '#34D399', bg: 'rgba(52,211,153,.15)', label: 'Ollama (Local)' },
   };
 
+  function copyModel(el, id) {
+    navigator.clipboard.writeText(id);
+    const old = el.textContent;
+    el.textContent = '✓ copied';
+    setTimeout(() => { el.textContent = old; }, 1200);
+    showToast('Model "' + id + '" copied!');
+  }
+
   function renderModelsTable(realModels, aliases) {
     const tbody = document.getElementById('models-tbody');
     if (!tbody) return;
     if (!realModels.length) {
-      tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted2)">No usable models — set a provider API key in Vercel env.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted2)">No usable models — set a provider API key in Vercel env.</td></tr>';
       return;
     }
-    // Map: real model id -> shortest alias pointing to it
-    const aliasFor = {};
-    aliases.forEach(a => {
-      if (!aliasFor[a.alias_for] || a.id.length < aliasFor[a.alias_for].length) {
-        aliasFor[a.alias_for] = a.id;
-      }
-    });
     const BEST = {
-      'gemini-3.6-flash':   'Fast, multimodal, default',
+      'gemini-3.6-flash':   'Fast, multimodal (default)',
       'gemini-2.5-flash':   'Balanced speed/quality',
       'gemini-flash-latest':'Always-latest flash',
       'gemini-pro-latest':  'Long context, complex',
     };
     tbody.innerHTML = realModels.map(m => {
-      const alias = aliasFor[m.id] || m.id;
       const meta = PROVIDER_META[m.provider] || { label: m.provider };
       return `<tr>
-        <td><code class="mono">${alias}</code></td>
+        <td><code class="mono model-copy" title="Click to copy" onclick="copyModel(this,'${m.api_model}')" style="cursor:pointer">${m.api_model}</code></td>
         <td><span class="tag tag-gemini">${meta.label}</span></td>
-        <td class="mono" style="color:var(--muted2)">${m.api_model}</td>
         <td><span class="tag tag-free">Free</span></td>
         <td style="color:var(--muted2)">${BEST[m.api_model] || '—'}</td>
       </tr>`;
