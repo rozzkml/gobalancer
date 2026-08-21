@@ -9,7 +9,7 @@ Support: Groq, Google Gemini, DeepSeek, Ollama
 import os
 import time
 import httpx
-from typing import Optional
+from typing import Optional, Any
 from collections import defaultdict
 from fastapi import FastAPI, HTTPException, Header, Depends
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
@@ -305,7 +305,12 @@ stats: dict = defaultdict(lambda: {"success": 0, "error": 0, "total_tokens": 0})
 
 class Message(BaseModel):
     role: str
-    content: str
+    # content optional: assistant tool-call turns and some tool messages carry no text
+    content: Optional[Any] = None
+    # OpenAI tool-calling passthrough fields
+    name: Optional[str] = None
+    tool_calls: Optional[list[Any]] = None
+    tool_call_id: Optional[str] = None
 
 class ChatRequest(BaseModel):
     model: str = "gemini"
@@ -313,6 +318,9 @@ class ChatRequest(BaseModel):
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 2048
     stream: Optional[bool] = False
+    # tool-calling passthrough
+    tools: Optional[list[Any]] = None
+    tool_choice: Optional[Any] = None
 
 # ============================================================
 # HELPER: RESOLVE MODEL
@@ -384,11 +392,16 @@ async def chat_completions(request: ChatRequest, _auth: None = Depends(verify_ga
 
     payload = {
         "model": api_model,
-        "messages": [m.dict() for m in request.messages],
+        "messages": [m.dict(exclude_none=True) for m in request.messages],
         "temperature": request.temperature,
         "max_tokens": request.max_tokens,
         "stream": request.stream,
     }
+    # Forward tool-calling fields when the client sends them (agentic clients like Hermes).
+    if request.tools is not None:
+        payload["tools"] = request.tools
+    if request.tool_choice is not None:
+        payload["tool_choice"] = request.tool_choice
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -433,10 +446,12 @@ async def chat_completions(request: ChatRequest, _auth: None = Depends(verify_ga
             stats[provider_name]["success"] += 1
 
             # Zen sometimes 200s with an empty {role} message (dead-ish model).
+            # But a valid tool-call turn also has empty content (tool_calls only) —
+            # don't mark those dead.
             if provider_name == "opencode-zen":
                 _ch = (data.get("choices") or [{}])[0]
                 _msg = _ch.get("message", {}) or {}
-                if not (_msg.get("content") or _msg.get("reasoning_content")):
+                if not (_msg.get("content") or _msg.get("reasoning_content") or _msg.get("tool_calls")):
                     zen_mark_dead(api_model)
 
             if "usage" in data:
