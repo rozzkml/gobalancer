@@ -96,9 +96,81 @@ def build_providers() -> dict:
             "default_model": "gemma-4-31b-it",
             "rpm_limit": 15,
         },
+        "opencode-zen": {
+            "base_url": "https://opencode.ai/zen/v1",
+            "api_keys": load_keys("OPENCODE_ZEN_API_KEY"),
+            # Models are discovered dynamically (free-tier only) — see zen_sync_models().
+            "models": {},
+            "default_model": "nemotron-3-ultra-free",
+            "rpm_limit": 15,
+            "dynamic_free": True,
+        },
     }
 
 PROVIDERS = build_providers()
+
+# ============================================================
+# OPENCODE-ZEN: DYNAMIC FREE-MODEL SYNC
+# The zen free-model list changes over time (models get added/removed,
+# e.g. deepseek-v4-flash-free went unavailable). Instead of hardcoding,
+# we fetch GET /models, keep only ids ending in "-free", probe each once
+# with a tiny request, and cache the working set. Refreshed on a TTL.
+# ============================================================
+
+ZEN_CACHE: dict = {"models": {}, "ts": 0.0, "listed": [], "dead": []}
+ZEN_TTL = 900  # re-list at most every 15 min per warm container
+# Runtime death registry: ids that returned "unavailable"/error at request time.
+# Self-heals — an id is re-tried once its TTL entry expires.
+ZEN_DEAD: dict = {}      # {model_id: expiry_ts}
+ZEN_DEAD_TTL = 1800      # keep a dead model out for 30 min, then re-test lazily
+# Seed with ids we already confirmed broken during setup.
+_ZEN_SEED_DEAD = {"deepseek-v4-flash-free", "muse-spark-1.2-contributor-free"}
+
+def _zen_is_dead(mid: str) -> bool:
+    exp = ZEN_DEAD.get(mid)
+    if exp is None:
+        return False
+    if time.time() >= exp:      # expired → give it another chance
+        ZEN_DEAD.pop(mid, None)
+        return False
+    return True
+
+def zen_mark_dead(mid: str):
+    ZEN_DEAD[mid] = time.time() + ZEN_DEAD_TTL
+    ZEN_CACHE["models"].pop(mid, None)
+
+def zen_sync_models(force: bool = False) -> dict:
+    """Cheap sync: GET /models (1 call), keep only live '-free' ids. TTL-gated.
+    Broken ids are pruned lazily at request time via ZEN_DEAD (self-healing)."""
+    prov = PROVIDERS.get("opencode-zen")
+    if not prov or not prov.get("dynamic_free"):
+        return {}
+    keys = prov["api_keys"]
+    if not keys:
+        return {}
+    now = time.time()
+    if not force and (now - ZEN_CACHE["ts"] < ZEN_TTL) and ZEN_CACHE["models"]:
+        return ZEN_CACHE["models"]
+    try:
+        with httpx.Client(timeout=20) as c:
+            r = c.get(f"{prov['base_url']}/models",
+                      headers={"Authorization": f"Bearer {keys[0]}"})
+        listed = [m["id"] for m in r.json().get("data", [])]
+    except Exception:
+        return ZEN_CACHE["models"]  # keep last good cache on failure
+
+    free_ids = [m for m in listed if m.endswith("-free")]
+    working = {m: m for m in free_ids if not _zen_is_dead(m)}
+    prov["models"] = working
+    if prov.get("default_model") not in working and working:
+        prov["default_model"] = next(iter(working))
+    ZEN_CACHE.update({"models": working, "ts": now, "listed": free_ids,
+                      "dead": sorted(ZEN_DEAD.keys())})
+    return working
+
+# Seed dead set (no network at import; keeps cold-start instant).
+for _m in _ZEN_SEED_DEAD:
+    ZEN_DEAD[_m] = time.time() + ZEN_DEAD_TTL
 
 # ============================================================
 # GATEWAY AUTH (opsional tapi direkomendasikan)
@@ -251,6 +323,13 @@ def resolve_model(model_str: str) -> tuple[str, str, str]:
     if model_str in MODEL_ALIASES:
         model_str = MODEL_ALIASES[model_str]
 
+    # Keep the opencode-zen free-model list fresh (TTL-gated, ~1 call/15min).
+    if "opencode-zen" in PROVIDERS and PROVIDERS["opencode-zen"].get("dynamic_free"):
+        try:
+            zen_sync_models()
+        except Exception:
+            pass
+
     # Format "provider/model"
     if "/" in model_str:
         provider_name, model_alias = model_str.split("/", 1)
@@ -343,10 +422,22 @@ async def chat_completions(request: ChatRequest, _auth: None = Depends(verify_ga
 
             if resp.status_code != 200:
                 stats[provider_name]["error"] += 1
+                # opencode-zen free models can vanish ("Model is unavailable").
+                # Mark dead so the dynamic sync drops it until its TTL expires.
+                if provider_name == "opencode-zen" and ("unavailable" in resp.text.lower()
+                                                         or resp.status_code in (400, 404)):
+                    zen_mark_dead(api_model)
                 raise HTTPException(resp.status_code, detail=resp.text)
 
             data = resp.json()
             stats[provider_name]["success"] += 1
+
+            # Zen sometimes 200s with an empty {role} message (dead-ish model).
+            if provider_name == "opencode-zen":
+                _ch = (data.get("choices") or [{}])[0]
+                _msg = _ch.get("message", {}) or {}
+                if not (_msg.get("content") or _msg.get("reasoning_content")):
+                    zen_mark_dead(api_model)
 
             if "usage" in data:
                 stats[provider_name]["total_tokens"] += data["usage"].get("total_tokens", 0)
@@ -376,6 +467,11 @@ async def list_models():
     Hanya tampilkan model yang benar-benar bisa dipakai:
     provider harus punya minimal 1 API key ke-load.
     """
+    # Refresh opencode-zen free-model list (TTL-gated).
+    try:
+        zen_sync_models()
+    except Exception:
+        pass
     models = []
     usable_aliases = set()
     for pname, pconfig in PROVIDERS.items():
@@ -437,7 +533,31 @@ async def get_stats():
             "total_tokens": stats[pname]["total_tokens"],
             "keys": key_status,
         }
+        # opencode-zen: surface dynamic free-model sync state.
+        if pconfig.get("dynamic_free"):
+            result[pname]["dynamic_free"] = {
+                "models_live": sorted(pconfig["models"].keys()),
+                "listed_free": ZEN_CACHE.get("listed", []),
+                "dead": sorted(ZEN_DEAD.keys()),
+                "default_model": pconfig.get("default_model"),
+                "synced_ago_s": round(time.time() - ZEN_CACHE["ts"], 1) if ZEN_CACHE["ts"] else None,
+                "ttl_s": ZEN_TTL,
+            }
     return result
+
+@app.post("/zen/sync")
+async def zen_sync():
+    """Force-refresh the opencode-zen free-model list (bypasses TTL)."""
+    if "opencode-zen" not in PROVIDERS:
+        raise HTTPException(404, "opencode-zen provider not configured")
+    working = zen_sync_models(force=True)
+    return {
+        "synced": True,
+        "models_live": sorted(working.keys()),
+        "listed_free": ZEN_CACHE.get("listed", []),
+        "dead": sorted(ZEN_DEAD.keys()),
+        "default_model": PROVIDERS["opencode-zen"].get("default_model"),
+    }
 
 # ============================================================
 # ENDPOINT: HEALTH & ROOT
