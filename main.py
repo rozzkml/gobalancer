@@ -383,11 +383,12 @@ async def get_stats():
     for pname, pconfig in PROVIDERS.items():
         keys = pconfig["api_keys"]
         key_status = []
-        for key in keys:
+        for idx, key in enumerate(keys, 1):
             kid = f"{pname}:{key}"
             reqs = len([t for t in tracker.requests.get(kid, []) if time.time() - t < 60])
             key_status.append({
-                "key_hint": f"...{key[-6:]}",
+                # No key fragment exposed — anonymous slot label only
+                "slot": f"key #{idx}",
                 "requests_last_minute": reqs,
                 "rpm_limit": pconfig["rpm_limit"],
                 "available": tracker.can_request(kid, pconfig["rpm_limit"]),

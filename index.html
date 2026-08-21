@@ -638,7 +638,7 @@ Model         : <span class="c-str">gemini-3.6-flash</span>     <span class="c-c
 
         const keyChips = pdata.keys.map(k =>
           `<span class="key-chip ${k.available ? 'available' : 'limited'}">
-            ${k.key_hint} ${k.requests_last_minute}/${k.rpm_limit}rpm
+            ${k.slot} ${k.requests_last_minute}/${k.rpm_limit}rpm
           </span>`
         ).join('');
 
