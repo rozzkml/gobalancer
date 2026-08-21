@@ -70,54 +70,17 @@ def load_keys(prefix: str) -> list[str]:
 
 def build_providers() -> dict:
     return {
-        "groq": {
-            "base_url": "https://api.groq.com/openai/v1",
-            "api_keys": load_keys("GROQ_API_KEY"),
-            "models": {
-                "llama-3.3-70b": "llama-3.3-70b-versatile",
-                "llama-3.1-8b": "llama-3.1-8b-instant",
-                "llama-3.1-70b": "llama-3.1-70b-versatile",
-                "mixtral-8x7b": "mixtral-8x7b-32768",
-                "gemma2-9b": "gemma2-9b-it",
-            },
-            "default_model": "llama-3.3-70b-versatile",
-            "rpm_limit": 30,
-        },
         "gemini": {
             "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
             "api_keys": load_keys("GEMINI_API_KEY"),
             "models": {
                 "gemini-3.6-flash": "gemini-3.6-flash",
-                "gemini-2.0-flash": "gemini-3.6-flash",       # alias lama -> current
-                "gemini-2.0-flash-lite": "gemini-3.6-flash",  # alias lama -> current
-                "gemini-1.5-flash": "gemini-3.6-flash",       # alias lama -> current
-                "gemini-1.5-pro": "gemini-1.5-pro",
+                "gemini-2.5-flash": "gemini-2.5-flash",
+                "gemini-flash-latest": "gemini-flash-latest",
+                "gemini-pro-latest": "gemini-pro-latest",
             },
             "default_model": "gemini-3.6-flash",
             "rpm_limit": 15,
-        },
-        "deepseek": {
-            "base_url": "https://api.deepseek.com/v1",
-            "api_keys": load_keys("DEEPSEEK_API_KEY"),
-            "models": {
-                "deepseek-chat": "deepseek-chat",
-                "deepseek-reasoner": "deepseek-reasoner",
-            },
-            "default_model": "deepseek-chat",
-            "rpm_limit": 60,
-        },
-        "ollama": {
-            "base_url": os.getenv("OLLAMA_BASE_URL", "http://localhost:11434") + "/v1",
-            "api_keys": ["ollama"],
-            "models": {
-                "llama3": "llama3",
-                "mistral": "mistral",
-                "qwen2": "qwen2",
-                "deepseek-r1": "deepseek-r1",
-                "phi3": "phi3",
-            },
-            "default_model": "llama3",
-            "rpm_limit": 999,
         },
     }
 
@@ -170,23 +133,12 @@ def verify_gateway_key(authorization: Optional[str] = Header(None)):
 # ============================================================
 
 MODEL_ALIASES = {
-    # Groq
-    "llama":          "groq/llama-3.3-70b",
-    "llama-fast":     "groq/llama-3.1-8b",
-    "llama-70b":      "groq/llama-3.1-70b",
-    "mixtral":        "groq/mixtral-8x7b",
-    "gemma":          "groq/gemma2-9b",
-    # Gemini
-    "gemini":         "gemini/gemini-2.0-flash",
-    "gemini-lite":    "gemini/gemini-2.0-flash-lite",
-    "gemini-pro":     "gemini/gemini-1.5-pro",
-    # DeepSeek
-    "deepseek":       "deepseek/deepseek-chat",
-    "deepseek-r1":    "deepseek/deepseek-reasoner",
-    # Ollama lokal
-    "local":          "ollama/llama3",
-    "local-mistral":  "ollama/mistral",
-    "local-deepseek": "ollama/deepseek-r1",
+    # Gemini (shortcut)
+    "gemini":         "gemini/gemini-3.6-flash",
+    "gemini-flash":   "gemini/gemini-3.6-flash",
+    "gemini-2.5":     "gemini/gemini-2.5-flash",
+    "gemini-pro":     "gemini/gemini-pro-latest",
+    "gemini-latest":  "gemini/gemini-flash-latest",
 }
 
 # ============================================================
@@ -258,7 +210,7 @@ class Message(BaseModel):
     content: str
 
 class ChatRequest(BaseModel):
-    model: str = "llama"
+    model: str = "gemini"
     messages: list[Message]
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 2048
@@ -287,8 +239,8 @@ def resolve_model(model_str: str) -> tuple[str, str, str]:
         if model_str in pconfig["models"]:
             return pname, pconfig["models"][model_str], pconfig["base_url"]
 
-    # Default ke Groq
-    return "groq", model_str, PROVIDERS["groq"]["base_url"]
+    # Default ke Gemini (satu-satunya provider aktif)
+    return "gemini", model_str, PROVIDERS["gemini"]["base_url"]
 
 # ============================================================
 # ENDPOINT: CHAT COMPLETIONS
@@ -393,23 +345,32 @@ async def chat_completions(request: ChatRequest, _auth: None = Depends(verify_ga
 
 @app.get("/v1/models")
 async def list_models():
+    """
+    Hanya tampilkan model yang benar-benar bisa dipakai:
+    provider harus punya minimal 1 API key ke-load.
+    """
     models = []
+    usable_aliases = set()
     for pname, pconfig in PROVIDERS.items():
         key_count = len(pconfig["api_keys"])
+        if key_count == 0:
+            continue  # skip provider tanpa key -> gak bisa dipakai
         for alias, api_name in pconfig["models"].items():
             models.append({
                 "id": f"{pname}/{alias}",
                 "object": "model",
                 "provider": pname,
                 "api_model": api_name,
-                "keys_loaded": key_count,
             })
+            usable_aliases.add(f"{pname}/{alias}")
+    # Alias cuma ditampilin kalau target-nya usable
     for alias, target in MODEL_ALIASES.items():
-        models.append({
-            "id": alias,
-            "object": "model",
-            "alias_for": target,
-        })
+        if target in usable_aliases:
+            models.append({
+                "id": alias,
+                "object": "model",
+                "alias_for": target,
+            })
     return {"object": "list", "data": models}
 
 # ============================================================
