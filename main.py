@@ -33,6 +33,9 @@ app.add_middleware(
 # di Vercel Environment Variables — otomatis terdeteksi semua
 # ============================================================
 
+# Track how many raw env vars were set vs unique keys, per prefix.
+KEY_LOAD_STATS: dict[str, dict] = {}
+
 def load_keys(prefix: str) -> list[str]:
     """
     Auto-detect semua key dengan prefix tertentu.
@@ -56,10 +59,20 @@ def load_keys(prefix: str) -> list[str]:
     # Hapus duplikat, pertahankan urutan
     seen = set()
     unique_keys = []
+    dup_fingerprints = []
     for k in keys:
         if k not in seen:
             seen.add(k)
             unique_keys.append(k)
+        else:
+            dup_fingerprints.append(f"{k[:4]}…{k[-4:]}" if len(k) >= 10 else "…")
+
+    KEY_LOAD_STATS[prefix] = {
+        "raw_set": len(keys),
+        "unique_loaded": len(unique_keys),
+        "duplicates_removed": len(keys) - len(unique_keys),
+        "duplicate_fingerprints": dup_fingerprints,
+    }
 
     return unique_keys
 
@@ -410,11 +423,15 @@ async def get_stats():
             key_status.append({
                 # No key fragment exposed — anonymous slot label only
                 "slot": f"key #{idx}",
+                # Masked fingerprint: first4…last4 only — safe to show, lets you
+                # spot duplicate keys without exposing the full secret.
+                "fingerprint": (f"{key[:4]}…{key[-4:]}" if len(key) >= 10 else "…"),
                 "requests_last_minute": total_reqs,
                 "per_model": per_model,
             })
         result[pname] = {
             "keys_loaded": len(keys),
+            "key_load": KEY_LOAD_STATS.get(f"{pname.upper()}_API_KEY", {}),
             "success": stats[pname]["success"],
             "error": stats[pname]["error"],
             "total_tokens": stats[pname]["total_tokens"],
