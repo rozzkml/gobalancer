@@ -240,8 +240,7 @@ def verify_gateway_key(authorization: Optional[str] = Header(None)):
 # ============================================================
 
 MODEL_ALIASES = {
-    # Gemini (shortcut)
-    "gemini":            "gemini/gemini-3.5-flash-lite",  # bare default → agent-capable
+    # No bare aliases — clients must use full provider/model ids.
 }
 
 # Per-model RPM limit per key (Google free-tier: Gemma 30/min, flash-lite 15/min).
@@ -329,7 +328,7 @@ class Message(BaseModel):
     tool_call_id: Optional[str] = None
 
 class ChatRequest(BaseModel):
-    model: str = "gemini"
+    model: str = "gemini/gemini-3.5-flash-lite"
     messages: list[Message]
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 2048
