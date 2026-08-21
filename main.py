@@ -74,13 +74,13 @@ def build_providers() -> dict:
             "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
             "api_keys": load_keys("GEMINI_API_KEY"),
             "models": {
-                # ── High RPD only (free-tier) ──
-                "gemini-3.5-flash-lite": "gemini-3.5-flash-lite",
-                "gemini-3.1-flash-lite": "gemini-3.1-flash-lite",
+                # ── High RPD only (free-tier). Gemma = highest RPD 14.4K/day ──
                 "gemma-4-31b-it": "gemma-4-31b-it",
                 "gemma-4-26b-a4b-it": "gemma-4-26b-a4b-it",
+                "gemini-3.5-flash-lite": "gemini-3.5-flash-lite",
+                "gemini-3.1-flash-lite": "gemini-3.1-flash-lite",
             },
-            "default_model": "gemini-3.5-flash-lite",
+            "default_model": "gemma-4-31b-it",
             "rpm_limit": 15,
         },
     }
