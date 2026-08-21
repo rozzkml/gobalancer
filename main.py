@@ -474,8 +474,6 @@ async def root():
         "name": "LLM Gateway",
         "version": "3.0.0",
         "docs": "/docs",
-        "_html_not_found": True,
-        "_searched": candidates,
         "endpoints": {
             "chat": "POST /v1/chat/completions",
             "models": "GET /v1/models",
