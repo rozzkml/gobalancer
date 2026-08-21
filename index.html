@@ -477,7 +477,7 @@
         <button class="tab-btn active" onclick="switchTab(this,'tab-curl')">cURL</button>
         <button class="tab-btn" onclick="switchTab(this,'tab-python')">Python</button>
         <button class="tab-btn" onclick="switchTab(this,'tab-js')">JavaScript</button>
-        <button class="tab-btn" onclick="switchTab(this,'tab-openclaw')">OpenClaw</button>
+        <button class="tab-btn" onclick="switchTab(this,'tab-agents')">Agents / SDK</button>
       </div>
 
       <div class="tab-content active" id="tab-curl">
@@ -530,18 +530,17 @@ const res = await client.chat.completions.create({
 console.log(res.choices[0].message.content);</div>
       </div>
 
-      <div class="tab-content" id="tab-openclaw">
+      <div class="tab-content" id="tab-agents">
         <div class="code-block">
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-<span class="c-comment"># Setting di OpenClaw / Hermes sebagai Custom Provider</span>
+<span class="c-comment"># Configure in Hermes, OpenClaw, or any OpenAI-compatible client</span>
 
-Provider Name : <span class="c-str">GoBalancer Gateway</span>
-Base URL      : <span class="c-url" id="oc-url">https://your-project.vercel.app/v1</span>
-API Key       : <span class="c-str">any-key</span>  <span class="c-comment">(isi bebas)</span>
+OPENAI_BASE_URL : <span class="c-url" id="ag-url">https://your-project.vercel.app/v1</span>
+OPENAI_API_KEY  : <span class="c-str">any-key</span>  <span class="c-comment">(gateway-managed load balancer)</span>
 
-<span class="c-comment"># Pilih model yang mau dipakai:</span>
-Model         : <span class="c-str">gemini-3.5-flash-lite</span>    <span class="c-comment">→ 250K TPM, big context (default, agent-capable)</span>
-              : <span class="c-str">gemini-3.1-flash-lite</span>    <span class="c-comment">→ 250K TPM, cheapest</span></div>
+<span class="c-comment"># Recommended default models:</span>
+Model (Primary) : <span class="c-str">gemini/gemini-3.5-flash-lite</span>  <span class="c-comment">→ 250K TPM, agent-capable</span>
+Model (Cheapest): <span class="c-str">gemini/gemini-3.1-flash-lite</span>  <span class="c-comment">→ 250K TPM, high throughput</span></div>
       </div>
     </div>
   </section>
@@ -587,7 +586,7 @@ Model         : <span class="c-str">gemini-3.5-flash-lite</span>    <span class=
   document.getElementById('curl-url').textContent = BASE;
   document.getElementById('py-url').textContent = `"${BASE}/v1"`;
   document.getElementById('js-url').textContent = `'${BASE}/v1'`;
-  document.getElementById('oc-url').textContent = BASE + '/v1';
+  document.getElementById('ag-url').textContent = BASE + '/v1';
 
   // ── TABS ──
   function switchTab(btn, id) {
