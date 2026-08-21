@@ -454,9 +454,14 @@ async def health():
 
 @app.get("/")
 async def root():
-    static_path = os.path.join(os.path.dirname(__file__), "static", "index.html")
-    if os.path.exists(static_path):
-        return FileResponse(static_path)
+    # index.html ada di root repo (sejajar main.py)
+    here = os.path.dirname(os.path.abspath(__file__))
+    for candidate in (
+        os.path.join(here, "index.html"),
+        os.path.join(here, "static", "index.html"),
+    ):
+        if os.path.exists(candidate):
+            return FileResponse(candidate)
     return {
         "name": "LLM Gateway",
         "version": "3.0.0",
