@@ -488,7 +488,7 @@ curl <span class="c-url" id="curl-url">https://your-project.vercel.app</span>/v1
   -H <span class="c-str">"Content-Type: application/json"</span> \
   -H <span class="c-str">"Authorization: Bearer any-key"</span> \
   -d '{
-    <span class="c-key">"model"</span>: <span class="c-str">"gemini-3.6-flash"</span>,
+    <span class="c-key">"model"</span>: <span class="c-str">"gemini-3.5-flash-lite"</span>,
     <span class="c-key">"messages"</span>: [{<span class="c-key">"role"</span>: <span class="c-str">"user"</span>, <span class="c-key">"content"</span>: <span class="c-str">"Halo!"</span>}]
   }'</div>
       </div>
@@ -505,7 +505,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model=<span class="c-str">"gemini-flash-lite-latest"</span>,  <span class="c-comment"># high RPD default (atau: gemma-4-31b-it, gemini-3.6-flash)</span>
+    model=<span class="c-str">"gemini-3.5-flash-lite"</span>,  <span class="c-comment"># high RPD default (atau: gemini-3.1-flash-lite, gemma-4-31b-it, gemma-4-26b-a4b-it)</span>
     messages=[{<span class="c-key">"role"</span>: <span class="c-str">"user"</span>, <span class="c-key">"content"</span>: <span class="c-str">"Halo!"</span>}]
 )
 print(response.choices[0].message.content)</div>
@@ -524,7 +524,7 @@ const client = new OpenAI({
 });
 
 const res = await client.chat.completions.create({
-  model: <span class="c-str">'gemini-flash-lite-latest'</span>,
+  model: <span class="c-str">'gemini-3.5-flash-lite'</span>,
   messages: [{ role: <span class="c-str">'user'</span>, content: <span class="c-str">'Hello!'</span> }]
 });
 console.log(res.choices[0].message.content);</div>
@@ -540,11 +540,10 @@ Base URL      : <span class="c-url" id="oc-url">https://your-project.vercel.app/
 API Key       : <span class="c-str">any-key</span>  <span class="c-comment">(isi bebas)</span>
 
 <span class="c-comment"># Pilih model yang mau dipakai:</span>
-Model         : <span class="c-str">gemini-flash-lite-latest</span> <span class="c-comment">→ Highest RPD, fast (default)</span>
-              : <span class="c-str">gemini-3.5-flash-lite</span>    <span class="c-comment">→ High RPD, pinned version</span>
+Model         : <span class="c-str">gemini-3.5-flash-lite</span>    <span class="c-comment">→ High RPD, fast (default)</span>
+              : <span class="c-str">gemini-3.1-flash-lite</span>    <span class="c-comment">→ High RPD, cheapest</span>
               : <span class="c-str">gemma-4-31b-it</span>           <span class="c-comment">→ High RPD, open weights</span>
-              : <span class="c-str">gemini-3.6-flash</span>         <span class="c-comment">→ Multimodal (low RPD ~20/day)</span>
-              : <span class="c-str">gemini-pro-latest</span>        <span class="c-comment">→ Long context, complex</span></div>
+              : <span class="c-str">gemma-4-26b-a4b-it</span>       <span class="c-comment">→ High RPD, open weights (MoE)</span></div>
       </div>
     </div>
   </section>
@@ -647,14 +646,10 @@ Model         : <span class="c-str">gemini-flash-lite-latest</span> <span class=
       return;
     }
     const BEST = {
-      'gemini-flash-lite-latest': 'Highest RPD, fast (default)',
-      'gemini-3.5-flash-lite':    'High RPD, pinned version',
+      'gemini-3.5-flash-lite':    'High RPD, fast (default)',
       'gemini-3.1-flash-lite':    'High RPD, cheapest',
       'gemma-4-31b-it':           'High RPD, open weights',
       'gemma-4-26b-a4b-it':       'High RPD, open weights (MoE)',
-      'gemini-3.6-flash':         'Multimodal (low RPD ~20/day)',
-      'gemini-flash-latest':      'Always-latest flash',
-      'gemini-pro-latest':        'Long context, complex',
     };
     tbody.innerHTML = realModels.map(m => {
       const meta = PROVIDER_META[m.provider] || { label: m.provider };

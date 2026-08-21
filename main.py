@@ -74,18 +74,13 @@ def build_providers() -> dict:
             "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
             "api_keys": load_keys("GEMINI_API_KEY"),
             "models": {
-                # ── High RPD (free-tier) — recommended defaults ──
-                "gemini-flash-lite-latest": "gemini-flash-lite-latest",
+                # ── High RPD only (free-tier) ──
                 "gemini-3.5-flash-lite": "gemini-3.5-flash-lite",
                 "gemini-3.1-flash-lite": "gemini-3.1-flash-lite",
                 "gemma-4-31b-it": "gemma-4-31b-it",
                 "gemma-4-26b-a4b-it": "gemma-4-26b-a4b-it",
-                # ── Standard flash / pro (low RPD, e.g. 3.6-flash ~20/day) ──
-                "gemini-3.6-flash": "gemini-3.6-flash",
-                "gemini-flash-latest": "gemini-flash-latest",
-                "gemini-pro-latest": "gemini-pro-latest",
             },
-            "default_model": "gemini-flash-lite-latest",
+            "default_model": "gemini-3.5-flash-lite",
             "rpm_limit": 15,
         },
     }
@@ -140,13 +135,10 @@ def verify_gateway_key(authorization: Optional[str] = Header(None)):
 
 MODEL_ALIASES = {
     # Gemini (shortcut)
-    "gemini":            "gemini/gemini-flash-lite-latest",  # default → high RPD
-    "gemini-flash-lite": "gemini/gemini-flash-lite-latest",
-    "gemini-lite":       "gemini/gemini-flash-lite-latest",
+    "gemini":            "gemini/gemini-3.5-flash-lite",  # default → high RPD
+    "gemini-lite":       "gemini/gemini-3.5-flash-lite",
+    "gemini-flash-lite": "gemini/gemini-3.5-flash-lite",
     "gemma":             "gemini/gemma-4-31b-it",
-    "gemini-flash":      "gemini/gemini-3.6-flash",           # explicit std flash
-    "gemini-pro":        "gemini/gemini-pro-latest",
-    "gemini-latest":     "gemini/gemini-flash-latest",
 }
 
 # ============================================================
