@@ -109,13 +109,12 @@ def build_providers() -> dict:
             "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
             "api_keys": load_keys("GEMINI_API_KEY"),
             "models": {
-                # ── High RPD only (free-tier). Gemma = highest RPD 14.4K/day ──
-                "gemma-4-31b-it": "gemma-4-31b-it",
-                "gemma-4-26b-a4b-it": "gemma-4-26b-a4b-it",
+                # ── Agent-capable only. Gemma dropped: 16K input-TPM cap can't
+                #    fit an agent-sized system prompt (429 on every turn). ──
                 "gemini-3.5-flash-lite": "gemini-3.5-flash-lite",
                 "gemini-3.1-flash-lite": "gemini-3.1-flash-lite",
             },
-            "default_model": "gemma-4-31b-it",
+            "default_model": "gemini-3.5-flash-lite",
             "rpm_limit": 15,
         },
         "opencode-zen": {
@@ -242,17 +241,12 @@ def verify_gateway_key(authorization: Optional[str] = Header(None)):
 
 MODEL_ALIASES = {
     # Gemini (shortcut)
-    "gemini":            "gemini/gemma-4-31b-it",  # bare default → highest RPD
-    "gemini-lite":       "gemini/gemini-3.5-flash-lite",
-    "gemini-flash-lite": "gemini/gemini-3.5-flash-lite",
-    "gemma":             "gemini/gemma-4-31b-it",
+    "gemini":            "gemini/gemini-3.5-flash-lite",  # bare default → agent-capable
 }
 
 # Per-model RPM limit per key (Google free-tier: Gemma 30/min, flash-lite 15/min).
 # Buckets are tracked per (provider, model, key) so each model uses its own quota.
 MODEL_RPM = {
-    "gemma-4-31b-it":        30,
-    "gemma-4-26b-a4b-it":    30,
     "gemini-3.5-flash-lite": 15,
     "gemini-3.1-flash-lite": 15,
 }
