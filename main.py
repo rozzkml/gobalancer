@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-app = FastAPI(title="LLM Gateway", version="2.0.0")
+app = FastAPI(title="GoBalancer", version="2.0.0")
 
 # CORS supaya bisa dipanggil dari mana saja (OpenClaw, Hermes, dll)
 app.add_middleware(
@@ -433,7 +433,7 @@ async def root():
         except Exception:
             continue
     return {
-        "name": "LLM Gateway",
+        "name": "GoBalancer",
         "version": "3.0.0",
         "docs": "/docs",
         "endpoints": {

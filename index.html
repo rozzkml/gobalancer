@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NexusLLM — AI Gateway</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>GoBalancer — AI Gateway</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
@@ -32,6 +32,9 @@
     line-height: 1.6;
     min-height: 100vh;
   }
+
+  html, body { width: 100%; max-width: 100%; overflow-x: hidden; }
+  img, svg, video, canvas { max-width: 100%; height: auto; }
 
   /* ── NAV ── */
   nav {
@@ -78,7 +81,7 @@
   }
 
   /* ── LAYOUT ── */
-  .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+  .container { width: 100%; max-width: 1100px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 24px); }
 
   /* ── HERO ── */
   .hero {
@@ -387,7 +390,7 @@
 <nav>
   <div class="nav-brand">
     <div class="logo">⚡</div>
-    NexusLLM
+    GoBalancer
   </div>
   <div class="nav-links">
     <a href="#quickstart" class="active">Quickstart</a>
@@ -532,7 +535,7 @@ console.log(res.choices[0].message.content);</div>
           <button class="copy-btn" onclick="copyCode(this)">Copy</button>
 <span class="c-comment"># Setting di OpenClaw / Hermes sebagai Custom Provider</span>
 
-Provider Name : <span class="c-str">NexusLLM Gateway</span>
+Provider Name : <span class="c-str">GoBalancer Gateway</span>
 Base URL      : <span class="c-url" id="oc-url">https://your-project.vercel.app/v1</span>
 API Key       : <span class="c-str">any-key</span>  <span class="c-comment">(isi bebas)</span>
 
@@ -573,7 +576,7 @@ Model         : <span class="c-str">gemini-3.6-flash</span>     <span class="c-c
 
 <footer>
   <div class="container">
-    NexusLLM Gateway — OpenAI-compatible · Built with FastAPI · Deployed on Vercel
+    GoBalancer Gateway — OpenAI-compatible · Built with FastAPI · Deployed on Vercel
   </div>
 </footer>
 
