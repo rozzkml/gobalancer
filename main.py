@@ -408,21 +408,50 @@ async def chat_completions(request: ChatRequest, _auth: None = Depends(verify_ga
         "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=60) as client:
-        try:
-            if request.stream:
-                async def stream_gen():
-                    async with client.stream(
+    if request.stream:
+        # NOTE: the AsyncClient MUST live inside the generator. If we open it in
+        # an `async with` here, it closes the moment this handler returns the
+        # StreamingResponse — before the ASGI server starts iterating the
+        # generator — yielding a 200 with an empty body (the classic Vercel
+        # "streams nothing" bug). Owning the client inside gen() keeps it alive
+        # for the whole stream. Real incremental streaming on Vercel also
+        # requires Fluid Compute enabled + the anti-buffering headers below.
+        async def stream_gen():
+            try:
+                async with httpx.AsyncClient(timeout=None) as sclient:
+                    async with sclient.stream(
                         "POST",
                         f"{base_url}/chat/completions",
                         json=payload,
                         headers=headers,
                     ) as resp:
+                        if resp.status_code != 200:
+                            stats[provider_name]["error"] += 1
+                            body = await resp.aread()
+                            yield body
+                            return
+                        stats[provider_name]["success"] += 1
                         async for chunk in resp.aiter_bytes():
                             yield chunk
-                stats[provider_name]["success"] += 1
-                return StreamingResponse(stream_gen(), media_type="text/event-stream")
+            except Exception as e:
+                stats[provider_name]["error"] += 1
+                import json as _json
+                yield ("data: " + _json.dumps({
+                    "error": {"message": f"gateway stream error: {e}"}
+                }) + "\n\n").encode()
+                yield b"data: [DONE]\n\n"
+        return StreamingResponse(
+            stream_gen(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # disable proxy buffering
+            },
+        )
 
+    async with httpx.AsyncClient(timeout=60) as client:
+        try:
             resp = await client.post(
                 f"{base_url}/chat/completions",
                 json=payload,
