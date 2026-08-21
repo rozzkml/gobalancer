@@ -454,18 +454,28 @@ async def health():
 
 @app.get("/")
 async def root():
-    # index.html ada di root repo (sejajar main.py)
+    from fastapi.responses import HTMLResponse
     here = os.path.dirname(os.path.abspath(__file__))
-    for candidate in (
+    candidates = [
         os.path.join(here, "index.html"),
         os.path.join(here, "static", "index.html"),
-    ):
-        if os.path.exists(candidate):
-            return FileResponse(candidate)
+        os.path.join(os.getcwd(), "index.html"),
+        "/var/task/index.html",
+        os.path.join(os.path.dirname(here), "index.html"),
+    ]
+    for candidate in candidates:
+        try:
+            if os.path.exists(candidate):
+                with open(candidate, "r", encoding="utf-8") as f:
+                    return HTMLResponse(f.read())
+        except Exception:
+            continue
     return {
         "name": "LLM Gateway",
         "version": "3.0.0",
         "docs": "/docs",
+        "_html_not_found": True,
+        "_searched": candidates,
         "endpoints": {
             "chat": "POST /v1/chat/completions",
             "models": "GET /v1/models",
