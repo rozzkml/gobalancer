@@ -135,11 +135,21 @@ def verify_gateway_key(authorization: Optional[str] = Header(None)):
 
 MODEL_ALIASES = {
     # Gemini (shortcut)
-    "gemini":            "gemini/gemini-3.5-flash-lite",  # default → high RPD
+    "gemini":            "gemini/gemma-4-31b-it",  # bare default → highest RPD
     "gemini-lite":       "gemini/gemini-3.5-flash-lite",
     "gemini-flash-lite": "gemini/gemini-3.5-flash-lite",
     "gemma":             "gemini/gemma-4-31b-it",
 }
+
+# Per-model RPM limit per key (Google free-tier: Gemma 30/min, flash-lite 15/min).
+# Buckets are tracked per (provider, model, key) so each model uses its own quota.
+MODEL_RPM = {
+    "gemma-4-31b-it":        30,
+    "gemma-4-26b-a4b-it":    30,
+    "gemini-3.5-flash-lite": 15,
+    "gemini-3.1-flash-lite": 15,
+}
+DEFAULT_RPM = 15
 
 # ============================================================
 # RATE LIMIT TRACKER (in-memory)
@@ -177,18 +187,21 @@ class KeyRotator:
     def __init__(self):
         self.indices: dict[str, int] = defaultdict(int)
 
-    def get_key(self, provider_name: str, rpm_limit: int) -> Optional[str]:
+    def get_key(self, provider_name: str, api_model: str, rpm_limit: int) -> Optional[str]:
         keys = PROVIDERS[provider_name]["api_keys"]
         if not keys:
             return None
 
-        start = self.indices[provider_name]
+        # Round-robin per (provider, model) so each model rotates independently.
+        rr_key = f"{provider_name}:{api_model}"
+        start = self.indices[rr_key]
         for i in range(len(keys)):
             idx = (start + i) % len(keys)
             key = keys[idx]
-            tracker_key = f"{provider_name}:{key}"
+            # Per-model bucket: each model consumes its own quota per key.
+            tracker_key = f"{provider_name}:{api_model}:{key}"
             if tracker.can_request(tracker_key, rpm_limit):
-                self.indices[provider_name] = (idx + 1) % len(keys)
+                self.indices[rr_key] = (idx + 1) % len(keys)
                 tracker.record(tracker_key)
                 return key
         return None
@@ -250,9 +263,10 @@ def resolve_model(model_str: str) -> tuple[str, str, str]:
 async def chat_completions(request: ChatRequest, _auth: None = Depends(verify_gateway_key)):
     provider_name, api_model, base_url = resolve_model(request.model)
     provider = PROVIDERS[provider_name]
-    rpm_limit = provider["rpm_limit"]
+    # Per-model RPM: Gemma 30/min/key, flash-lite 15/min/key (Google free-tier).
+    rpm_limit: int = MODEL_RPM.get(api_model, provider.get("rpm_limit") or DEFAULT_RPM)
 
-    api_key = rotator.get_key(provider_name, rpm_limit)
+    api_key = rotator.get_key(provider_name, api_model, rpm_limit)
     if not api_key:
         keys = provider["api_keys"]
         if not keys:
@@ -264,7 +278,7 @@ async def chat_completions(request: ChatRequest, _auth: None = Depends(verify_ga
                 }
             )
         wait = min(
-            tracker.wait_time(f"{provider_name}:{k}", rpm_limit)
+            tracker.wait_time(f"{provider_name}:{api_model}:{k}", rpm_limit)
             for k in keys
         )
         raise HTTPException(
@@ -384,14 +398,20 @@ async def get_stats():
         keys = pconfig["api_keys"]
         key_status = []
         for idx, key in enumerate(keys, 1):
-            kid = f"{pname}:{key}"
-            reqs = len([t for t in tracker.requests.get(kid, []) if time.time() - t < 60])
+            # Per-model buckets: aggregate usage across all models on this key.
+            now = time.time()
+            per_model = {}
+            total_reqs = 0
+            for m, mrpm in MODEL_RPM.items():
+                kid = f"{pname}:{m}:{key}"
+                r = len([t for t in tracker.requests.get(kid, []) if now - t < 60])
+                total_reqs += r
+                per_model[m] = {"rpm": r, "rpm_limit": mrpm, "available": r < mrpm}
             key_status.append({
                 # No key fragment exposed — anonymous slot label only
                 "slot": f"key #{idx}",
-                "requests_last_minute": reqs,
-                "rpm_limit": pconfig["rpm_limit"],
-                "available": tracker.can_request(kid, pconfig["rpm_limit"]),
+                "requests_last_minute": total_reqs,
+                "per_model": per_model,
             })
         result[pname] = {
             "keys_loaded": len(keys),
