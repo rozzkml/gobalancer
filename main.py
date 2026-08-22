@@ -405,6 +405,43 @@ async def chat_completions(request: ChatRequest, _auth: None = Depends(verify_ga
             }
         )
 
+def _gemini_rewrite_tool_history(msgs: list) -> list:
+    """Gemini 3.x rejects replayed functionCall turns that lack a thought_signature
+    ('Function call is missing a thought_signature' -> HTTP 400). OpenAI-compatible
+    clients (Hermes/OpenClaw) never send that opaque field back, so every multi-turn
+    tool loop dies on the follow-up request. Fix: rewrite tool-call history into
+    plain text before relaying (validated against upstream: 200 OK)."""
+    out: list = []
+    pending: list = []
+
+    def _flush():
+        if pending:
+            out.append({"role": "user", "content": "\n".join(pending)})
+            pending.clear()
+
+    for m in msgs:
+        role = m.get("role")
+        if role == "assistant" and m.get("tool_calls"):
+            _flush()
+            lines = []
+            orig = m.get("content")
+            if isinstance(orig, str) and orig.strip():
+                lines.append(orig)
+            for tc in m["tool_calls"]:
+                fn = tc.get("function") or {}
+                lines.append("[Calling function %s with arguments %s]"
+                             % (fn.get("name"), fn.get("arguments")))
+            out.append({"role": "assistant", "content": "\n".join(lines)})
+        elif role == "tool":
+            name = m.get("name") or m.get("tool_call_id") or "tool"
+            pending.append("[Tool %s result]: %s" % (name, m.get("content")))
+        else:
+            _flush()
+            out.append(m)
+    _flush()
+    return out
+
+
     payload = {
         "model": api_model,
         "messages": [m.dict(exclude_none=True) for m in request.messages],
@@ -417,6 +454,12 @@ async def chat_completions(request: ChatRequest, _auth: None = Depends(verify_ga
         payload["tools"] = request.tools
     if request.tool_choice is not None:
         payload["tool_choice"] = request.tool_choice
+
+    # Gemini-only: neutralize thought_signature 400s on tool-result turns.
+    if provider_name == "gemini" and any(
+        m.get("tool_calls") or m.get("role") == "tool" for m in payload["messages"]
+    ):
+        payload["messages"] = _gemini_rewrite_tool_history(payload["messages"])
 
     headers = {
         "Authorization": f"Bearer {api_key}",
