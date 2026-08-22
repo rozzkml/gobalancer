@@ -667,12 +667,19 @@ Model (Cheapest): <span class="c-str">gemini/gemini-3.1-flash-lite</span>  <span
         totalReq += req;
         totalTok += pdata.total_tokens;
 
-        // Aggregate rpm capacity across all loaded keys
-        const rpm = pdata.keys.reduce((sum, k) => sum + k.rpm_limit, 0);
+        // Aggregate rpm capacity across all loaded keys (rpm_limit now lives
+        // under k.per_model[model], not top-level — sum the per-model caps).
+        const rpm = pdata.keys.reduce((sum, k) => {
+          const pm = k.per_model || {};
+          const perKey = Object.values(pm).reduce((s, mv) => s + (mv.rpm_limit || 0), 0);
+          return sum + perKey;
+        }, 0);
 
         const hasKeys = pdata.keys_loaded > 0;
-        const allAvail = pdata.keys.every(k => k.available);
-        const someAvail = pdata.keys.some(k => k.available);
+        // a key is "available" if ANY of its models is available
+        const keyAvail = k => Object.values(k.per_model || {}).some(mv => mv.available);
+        const allAvail = pdata.keys.every(keyAvail);
+        const someAvail = pdata.keys.some(keyAvail);
         const statusClass = !hasKeys ? 'status-warn' : allAvail ? 'status-ok' : someAvail ? 'status-warn' : 'status-err';
         const statusText = !hasKeys ? 'Offline' : allAvail ? 'Healthy' : someAvail ? 'Partial' : 'Limited';
 
@@ -702,7 +709,8 @@ Model (Cheapest): <span class="c-str">gemini/gemini-3.1-flash-lite</span>  <span
       const models = await fetch('/v1/models').then(r => r.json());
       const realModels = models.data.filter(m => !m.alias_for);
       const aliases = models.data.filter(m => m.alias_for);
-      document.getElementById('stat-models').textContent = realModels.length;
+      const modelsEl = document.getElementById('stat-models');
+      if (modelsEl) modelsEl.textContent = realModels.length;
       renderModelsTable(realModels, aliases);
 
     } catch(e) {
