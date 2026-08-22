@@ -374,37 +374,6 @@ def resolve_model(model_str: str) -> tuple[str, str, str]:
 # ENDPOINT: CHAT COMPLETIONS
 # ============================================================
 
-@app.post("/v1/chat/completions")
-async def chat_completions(request: ChatRequest, _auth: None = Depends(verify_gateway_key)):
-    provider_name, api_model, base_url = resolve_model(request.model)
-    provider = PROVIDERS[provider_name]
-    # Per-model RPM: Gemma 30/min/key, flash-lite 15/min/key (Google free-tier).
-    rpm_limit: int = MODEL_RPM.get(api_model, provider.get("rpm_limit") or DEFAULT_RPM)
-
-    api_key = rotator.get_key(provider_name, api_model, rpm_limit)
-    if not api_key:
-        keys = provider["api_keys"]
-        if not keys:
-            raise HTTPException(
-                503,
-                detail={
-                    "error": f"Tidak ada API key untuk '{provider_name}'",
-                    "hint": f"Tambahkan {provider_name.upper()}_API_KEY_1 di environment variables"
-                }
-            )
-        wait = min(
-            tracker.wait_time(f"{provider_name}:{api_model}:{k}", rpm_limit)
-            for k in keys
-        )
-        raise HTTPException(
-            429,
-            detail={
-                "error": "Semua key sedang rate limited",
-                "provider": provider_name,
-                "retry_after_seconds": round(wait, 1)
-            }
-        )
-
 def _gemini_rewrite_tool_history(msgs: list) -> list:
     """Gemini 3.x rejects replayed functionCall turns that lack a thought_signature
     ('Function call is missing a thought_signature' -> HTTP 400). OpenAI-compatible
@@ -441,6 +410,37 @@ def _gemini_rewrite_tool_history(msgs: list) -> list:
     _flush()
     return out
 
+
+@app.post("/v1/chat/completions")
+async def chat_completions(request: ChatRequest, _auth: None = Depends(verify_gateway_key)):
+    provider_name, api_model, base_url = resolve_model(request.model)
+    provider = PROVIDERS[provider_name]
+    # Per-model RPM: Gemma 30/min/key, flash-lite 15/min/key (Google free-tier).
+    rpm_limit: int = MODEL_RPM.get(api_model, provider.get("rpm_limit") or DEFAULT_RPM)
+
+    api_key = rotator.get_key(provider_name, api_model, rpm_limit)
+    if not api_key:
+        keys = provider["api_keys"]
+        if not keys:
+            raise HTTPException(
+                503,
+                detail={
+                    "error": f"Tidak ada API key untuk '{provider_name}'",
+                    "hint": f"Tambahkan {provider_name.upper()}_API_KEY_1 di environment variables"
+                }
+            )
+        wait = min(
+            tracker.wait_time(f"{provider_name}:{api_model}:{k}", rpm_limit)
+            for k in keys
+        )
+        raise HTTPException(
+            429,
+            detail={
+                "error": "Semua key sedang rate limited",
+                "provider": provider_name,
+                "retry_after_seconds": round(wait, 1)
+            }
+        )
 
     payload = {
         "model": api_model,
