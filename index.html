@@ -632,8 +632,14 @@ Model (Cheapest): <span class="c-str">gemini/gemini-3.1-flash-lite</span>  <span
       return;
     }
     const BEST = {
-      'gemini-3.5-flash-lite':    '250K TPM, big context (default)',
-      'gemini-3.1-flash-lite':    '250K TPM, cheapest',
+      'gemini-3.5-flash-lite':    'Agent driver, Multimodal & Vision (Default)',
+      'gemini-3.1-flash-lite':    'Fast text processing, high-throughput',
+      'x-preview-f-free':         'General reasoning & chat',
+      'mimo-v2.5-free':           'Fast completion & lightweight tasks',
+      'hy3-free':                 'Deep reasoning & logic',
+      'nemotron-3-ultra-free':    'Complex multi-step coding',
+      'nemotron-3.5-lightning-free': 'Ultra-fast inference & synthesis',
+      'laguna-s-2.1-free':        'General text generation',
     };
     tbody.innerHTML = realModels.map(m => {
       const meta = PROVIDER_META[m.provider] || { label: m.provider };
