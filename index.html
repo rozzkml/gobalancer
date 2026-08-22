@@ -547,6 +547,7 @@ Model (Cheapest): <span class="c-str">gemini/gemini-3.1-flash-lite</span>  <span
         <div class="section-title">Available Models</div>
         <div class="section-sub">Click a model name to copy — use it as the <code class="mono">model</code> field</div>
       </div>
+      <button class="btn btn-ghost" onclick="syncZenModels()" style="font-size:12px;padding:7px 14px;">🔄 Scan Free Models</button>
     </div>
     <div class="table-scroll">
     <table class="model-table">
@@ -719,6 +720,25 @@ Model (Cheapest): <span class="c-str">gemini/gemini-3.1-flash-lite</span>  <span
   // Load on start, refresh every 30s
   loadStats();
   setInterval(loadStats, 30000);
+
+  async function syncZenModels() {
+    const btn = event.target;
+    btn.textContent = "⏳ Scanning...";
+    try {
+      const res = await fetch("/zen/sync", { method: "POST" });
+      const data = await res.json();
+      showToast("Synced! Live free models: " + (data.live_count || "OK"));
+      // Reload models table
+      const modelsRes = await fetch("/v1/models");
+      const modelsData = await modelsRes.json();
+      window.renderModelsTable(modelsData.data);
+    } catch(e) {
+      showToast("Sync failed");
+    } finally {
+      btn.textContent = "🔄 Scan Free Models";
+    }
+  }
+
 </script>
 </body>
 </html>
