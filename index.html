@@ -420,22 +420,18 @@
   </section>
 
   <!-- STATS -->
-  <div class="stats-bar">
+  <div class="stats-bar" style="grid-template-columns: repeat(3, 1fr);">
     <div class="stat-cell">
-      <div class="stat-num" id="stat-providers">4</div>
-      <div class="stat-label">Providers</div>
-    </div>
-    <div class="stat-cell">
-      <div class="stat-num" id="stat-models">13</div>
-      <div class="stat-label">Models</div>
-    </div>
-    <div class="stat-cell">
-      <div class="stat-num" id="stat-requests">—</div>
+      <div class="stat-num" id="stat-requests">0</div>
       <div class="stat-label">Total Requests</div>
     </div>
     <div class="stat-cell">
-      <div class="stat-num" id="stat-tokens">—</div>
-      <div class="stat-label">Tokens Served</div>
+      <div class="stat-num" id="stat-tokens">0</div>
+      <div class="stat-label">Total Tokens Processed</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-num" style="color:var(--green)">Operational</div>
+      <div class="stat-label">System Status</div>
     </div>
   </div>
 
