@@ -430,7 +430,7 @@
       <div class="stat-label">Total Tokens Processed</div>
     </div>
     <div class="stat-cell">
-      <div class="stat-num" style="color:var(--green)">Operational</div>
+      <div class="stat-num" style="background:none;-webkit-text-fill-color:#22c55e;color:#22c55e;">Operational</div>
       <div class="stat-label">System Status</div>
     </div>
   </div>
@@ -703,7 +703,6 @@ Model (Cheapest): <span class="c-str">gemini/gemini-3.1-flash-lite</span>  <span
       const realModels = models.data.filter(m => !m.alias_for);
       const aliases = models.data.filter(m => m.alias_for);
       document.getElementById('stat-models').textContent = realModels.length;
-      document.getElementById('stat-providers').textContent = Object.keys(data).length;
       renderModelsTable(realModels, aliases);
 
     } catch(e) {
