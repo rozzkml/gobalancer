@@ -467,11 +467,6 @@
       </div>
     </div>
 
-    <div class="url-box">
-      <span class="url-text" id="base-url">https://your-project.vercel.app/v1</span>
-      <button class="btn btn-ghost" onclick="copyUrl()" style="font-size:12px;padding:6px 14px;white-space:nowrap;">Copy URL</button>
-    </div>
-
     <div class="code-tabs">
       <div class="tab-bar">
         <button class="tab-btn active" onclick="switchTab(this,'tab-curl')">cURL</button>
@@ -582,7 +577,6 @@ Model (Cheapest): <span class="c-str">gemini/gemini-3.1-flash-lite</span>  <span
 <script>
   // ── UPDATE BASE URL ──
   const BASE = window.location.origin;
-  document.getElementById('base-url').textContent = BASE + '/v1';
   document.getElementById('curl-url').textContent = BASE;
   document.getElementById('py-url').textContent = `"${BASE}/v1"`;
   document.getElementById('js-url').textContent = `'${BASE}/v1'`;
@@ -602,11 +596,6 @@ Model (Cheapest): <span class="c-str">gemini/gemini-3.1-flash-lite</span>  <span
     t.textContent = msg;
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 2000);
-  }
-
-  function copyUrl() {
-    navigator.clipboard.writeText(BASE + '/v1');
-    showToast('Base URL copied!');
   }
 
   function copyCode(btn) {
